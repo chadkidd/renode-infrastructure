@@ -349,6 +349,7 @@
     <Compile Include="Peripherals\Sensors\ST_I2CSensorBase.cs" />
     <Compile Include="Peripherals\Sensors\LSM330_Accelerometer.cs" />
     <Compile Include="Peripherals\Sensors\LSM330_Gyroscope.cs" />
+    <Compile Include="Peripherals\Sensors\LIS3DSH_Accelerometer.cs" />
     <Compile Include="Peripherals\Timers\NRF52840_Timer.cs" />
     <Compile Include="Peripherals\Sensors\ArduCAMMini2MPPlus.cs" />
     <Compile Include="Peripherals\Sensors\OV2640.cs" />

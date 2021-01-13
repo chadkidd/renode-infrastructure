@@ -108,13 +108,17 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             ;
 
             Registers.PinConfigure.DefineMany(this, NumberOfPins, (register, idx) =>
-            {
+            {   
                 register
                     .WithFlag(0, name: "DIR",
                         writeCallback: (_, val) => Pins[idx].Direction = val ? PinDirection.Output : PinDirection.Input,
                         valueProviderCallback: _ => Pins[idx].Direction == PinDirection.Output)
-                    .WithTag("INPUT", 1, 1)
-                    .WithTag("PULL", 2, 2)
+                    .WithFlag(1, name: "INPUT",
+                         writeCallback: (_, val) => Pins[idx].InputConnect = val ?  InputConnect.Disconnect : InputConnect.Connect,
+                         valueProviderCallback: _ => Pins[idx].InputConnect == InputConnect.Disconnect)
+                    .WithEnumField<DoubleWordRegister, PullConfiguration>(2, 2, name: "PULL",
+                        writeCallback: (_, val) => Pins[idx].PullConfiguration = val,
+                        valueProviderCallback: _ => Pins[idx].PullConfiguration)
                     .WithReservedBits(4, 4)
                     .WithTag("DRIVE", 8, 3)
                     .WithReservedBits(11, 5)
@@ -176,6 +180,10 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
 
             public PinDirection Direction { get; set; }
 
+            public PullConfiguration PullConfiguration { get; set; }
+
+            public InputConnect InputConnect { get; set; }
+
             public SenseMode SenseMode { get; set; }
 
             public bool IsSensing
@@ -206,6 +214,19 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         {
             Input,
             Output
+        }
+
+        public enum InputConnect
+        {
+            Connect,
+            Disconnect
+        }
+
+        public enum PullConfiguration
+        {
+            Disabled = 0,
+            PullDown = 1,
+            PullUp = 3
         }
 
         private enum Registers
