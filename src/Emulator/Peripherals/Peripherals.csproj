@@ -365,6 +365,7 @@
     <Compile Include="Peripherals\Miscellaneous\DA1468x_OTPC.cs" />
     <Compile Include="Peripherals\Timers\DA1468x_Watchdog.cs" />
     <Compile Include="Peripherals\Miscellaneous\DA1468x_GPREG.cs" />
+    <Compile Include="Peripherals\GPIOPort\DA1468x_GPIO.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ProjectExtensions>

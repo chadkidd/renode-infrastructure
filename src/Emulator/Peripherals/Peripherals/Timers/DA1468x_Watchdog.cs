@@ -21,10 +21,12 @@ namespace Antmicro.Renode.Peripherals.Timers
             internalTimer.LimitReached += TimerLimitReached;
         }
 
-        /* CKK - This file is a work in progress - nothing timer related has really been implemented yet
-         * Just register placeholders for now
+        /* Chad Kidd - This file is a work in progress - nothing timer related has been implemented yet
+         * Just implemented register placeholders for now
+         *
+         * TODO - implement the actual timer and reset as needed
+         * 
          */
-        //TODO - implement the actual timer and reset
         public override void Reset()
         {
             base.Reset();
