@@ -14,12 +14,11 @@ using Antmicro.Migrant;
 
 namespace Antmicro.Renode.Peripherals.UART
 {
-    [AllowedTranslations(AllowedTranslation.WordToDoubleWord)]
-    public class NS16550 :  IBytePeripheral, IDoubleWordPeripheral, IUART, IKnownSize
+    [AllowedTranslations(AllowedTranslation.ByteToWord)]
+    public class DA1468x_UART :  IBytePeripheral, IWordPeripheral, IUART, IKnownSize
     {
-        public NS16550(bool wideRegisters = false)
+        public DA1468x_UART()
         {
-            mode32 = wideRegisters;
             IRQ = new GPIO();
             Reset();
         }
@@ -38,7 +37,7 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             lock(UARTLock)
             {
-                if((fifoControl & FifoControl.Enable) != 0 || true)//HACK : fifo always enabled
+                if((fifoControl & FifoControl.Enable) != 0 || true)     //HACK : fifo always enabled
                 {
                     recvFifo.Enqueue(value);
                     lineStatus |= LineStatus.DataReady;
@@ -59,10 +58,6 @@ namespace Antmicro.Renode.Peripherals.UART
         public void WriteByte(long offset, byte value)
         {
             var originalOffset = offset;
-            if(mode32 && ((offset % 4) == 0))
-            {
-                offset = offset / 4;
-            }
             lock(UARTLock)
             {
                 if((lineControl & LineControl.DivisorLatchAccess) != 0)
@@ -76,16 +71,12 @@ namespace Antmicro.Renode.Peripherals.UART
                     case Register.DivisorLatchH:
                         divider = (ushort)((divider & 0x00ff) | (value << 8));
                         return;
-
-                    case Register.PrescalerDivision:
-                        prescaler = (byte)(value & 0x0f);
-                        return;
                     }
                 }
 
                 switch((Register)offset)
                 {
-                case Register.Data:
+                case Register.ReceiveTransmitBuffer:
                     var handler = CharReceived;
                     if(handler != null)
                     {
@@ -184,33 +175,19 @@ namespace Antmicro.Renode.Peripherals.UART
                     break;
 
                 case Register.LineStatus:
-                    //Linux should not write here, but it does
                     break;
 
-                case Register.TriggerLevelScratchpad:
+                case Register.Scratchpad:
                     scratchRegister = value;
                     break;
 
-                case Register.MultiModeControl0:
-                    this.Log(LogLevel.Warning, "Unsupported write to LIN mode configuration register at offset 0x{0:X}.", originalOffset);
-                    break;
-                case Register.MultiModeControl1:
-                    this.Log(LogLevel.Warning, "Unsupported write to RZI mode configuration register at offset 0x{0:X}.", originalOffset);
-                    break;
-                case Register.MultiModeControl2:
-                case Register.MultiModeInterruptEnable:
-                case Register.TransmitterTimeGuard:
-                case Register.ReceiverTimeOut:
-                    this.Log(LogLevel.Warning, "Unsupported write to multi-mode configuration register at offset 0x{0:X}.", originalOffset);
-                    break;
                 case Register.FractionalDivisor:
-                case Register.GlitchFilter:
-                    this.Log(LogLevel.Warning, "Unsupported write to configuration register at offset 0x{0:X}.", originalOffset);
+                    fractionalDivisor = value;
                     break;
 
                 default:
-                    this.LogUnhandledWrite(originalOffset, value);
-                    break;
+                this.LogUnhandledWrite(originalOffset, value);
+                break;
                 }
 
             }
@@ -219,10 +196,6 @@ namespace Antmicro.Renode.Peripherals.UART
         public byte ReadByte(long offset)
         {
             var originalOffset = offset;
-            if(mode32 && ((offset % 4) == 0))
-            {
-                offset = offset / 4;
-            }
             lock(UARTLock)
             {
                 byte value = 0x0;
@@ -243,7 +216,7 @@ namespace Antmicro.Renode.Peripherals.UART
                 {
                     switch((Register)offset)
                     {
-                    case Register.Data:
+                    case Register.ReceiveTransmitBuffer:
                         if((fifoControl & FifoControl.Enable) != 0 || true /*HACK*/)
                         {
                             if(recvFifo.Count > 0)
@@ -294,9 +267,6 @@ namespace Antmicro.Renode.Peripherals.UART
                         value = (byte)modemControl;
                         break;
 
-                    case Register.LineStatusHack: //TODO: HACK! Why does it work?
-                        goto case Register.LineStatus;
-
                     case Register.LineStatus:
                         value = (byte)lineStatus;
                         if((lineStatus & (LineStatus.BreakIrqIndicator | LineStatus.OverrunErrorIndicator)) != 0)
@@ -307,46 +277,16 @@ namespace Antmicro.Renode.Peripherals.UART
                         lineStatus &= ~(LineStatus.OverrunErrorIndicator | LineStatus.ParityErrorIndicator | LineStatus.FrameErrorIndicator | LineStatus.BreakIrqIndicator | LineStatus.ReceiverFIFOError);
                         break;
 
-                    case Register.ModemStatusRegister:
-                //    this.DebugLog("6 modem control read");
-                        if((modemControl & ModemControl.Loopback) != 0)
-                        {
-                            /* in loopback, the modem output pins are connected to the inputs */
-                            value = (byte)(((byte)modemControl & 0x0c) << 4);
-                            value |= (byte)(((byte)modemControl & 0x02) << 3);
-                            value |= (byte)(((byte)modemControl & 0x01) << 5);
-                        }
-                        else
-                        {
-                            value = (byte)modemStatus;
-                            /* Clear delta bits & msr int after read, if they were set */
-                            if((modemStatus & ModemStatus.AnyDelta) != 0)
-                            {
-                                modemStatus &= (ModemStatus)0xF0;
-                                Update();
-                            }
-                        }
-                        break;
-
-                    case Register.TriggerLevelScratchpad:
+                    case Register.Scratchpad:
                         value = scratchRegister;
                         break;
 
-                    case Register.MultiModeControl0:
-                        this.Log(LogLevel.Warning, "Unsupported read from LIN configuration register at offset 0x{0:X}.", originalOffset);
+                    case Register.UartBusy:
+                        value = 0;
                         break;
-                    case Register.MultiModeControl1:
-                        this.Log(LogLevel.Warning, "Unsupported read from RZI configuration register at offset 0x{0:X}.", originalOffset);
-                        break;
-                    case Register.MultiModeControl2:
-                    case Register.MultiModeInterruptEnable:
-                    case Register.TransmitterTimeGuard:
-                    case Register.ReceiverTimeOut:
-                        this.Log(LogLevel.Warning, "Unsupported read from multi-mode configuration register at offset 0x{0:X}.", originalOffset);
-                        break;
+
                     case Register.FractionalDivisor:
-                    case Register.GlitchFilter:
-                        this.Log(LogLevel.Warning, "Unsupported read from configuration register at offset 0x{0:X}.", originalOffset);
+                        value = fractionalDivisor;
                         break;
 
                     default:
@@ -376,12 +316,12 @@ namespace Antmicro.Renode.Peripherals.UART
             }
         }
 
-        public uint ReadDoubleWord(long offset)
+        public ushort ReadWord(long offset)
         {
-            return (uint)ReadByte(offset);
+            return (ushort)ReadByte(offset);
         }
 
-        public void WriteDoubleWord(long offset, uint value)
+        public void WriteWord(long offset, ushort value)
         {
             WriteByte(offset, (byte)(value & 0xFF));
         }
@@ -436,7 +376,6 @@ namespace Antmicro.Renode.Peripherals.UART
         private ModemStatus modemStatus;
         /* read only */
         private FifoControl fifoControl;
-        private bool mode32;
         private byte scratchRegister;
 
         private byte interruptTriggerLevel;
@@ -445,39 +384,29 @@ namespace Antmicro.Renode.Peripherals.UART
         private byte receiverBuffer;
         /* receive register */
         private int transmitNotPending;
-
-        private const int ReceiveFIFOSize = 16;
+        private byte fractionalDivisor = 0;
         private const byte MaskInterruptId = 0x06;
         /* Mask for the interrupt ID */
 
 
         private enum Register:uint
         {
-            Data = 0x00,
-            DivisorLatchL = 0x00,
-            // the same as Data but accessible only when DLAB bit is set
-            InterruptEnable = 0x01,
-            DivisorLatchH = 0x01,
-            // the same as Interrupt enabel but accessible only when DLAB bit is set
-            InterruptIdentification = 0x02,
-            FIFOControl = 0x02,
-            LineControl = 0x03,
-            ModemControl = 0x04,
-            LineStatus = 0x05,
-            PrescalerDivision = 0x05,
-            // the same as Line Status but accessible only when DLAB bit is set
-            LineStatusHack = 0x14,
-            ModemStatusRegister = 0x06,
-            TriggerLevelScratchpad = 0x07,
-
-            MultiModeInterruptEnable = 0x09,
-            MultiModeControl0 = 0x0C,
-            MultiModeControl1 = 0x0D,
-            MultiModeControl2 = 0x0E,
-            FractionalDivisor = 0x0F,
-            GlitchFilter = 0x11,
-            TransmitterTimeGuard = 0x12,
-            ReceiverTimeOut = 0x13
+            //Receive buffer and Transmit Holding register are the same register
+            ReceiveTransmitBuffer = 0x0,
+            // DivisorLatchL is the same as ReceiveTransmitBuffer but accessible only when DLAB bit is set
+            DivisorLatchL = 0x0,
+            InterruptEnable = 0x4,
+            // DivisorLatchH is the same as Interrupt enable but accessible only when DLAB bit is set
+            DivisorLatchH = 0x4,
+            // InterruptIdentification = Read only and FifoControl = Write only
+            InterruptIdentification = 0x8,
+            FIFOControl = 0x8,
+            LineControl = 0xC,
+            ModemControl = 0x10,
+            LineStatus = 0x14,
+            Scratchpad = 0x1C,
+            UartBusy = 0x7C,
+            FractionalDivisor = 0xC0,
         }
 
         [Flags]
@@ -518,10 +447,6 @@ namespace Antmicro.Renode.Peripherals.UART
             ReceiverData = 0x01
         }
 
-        /*
-         * These are the definitions for the Modem Control Register
-         * KKRU: This comment is useful as hell.
-         */
         [Flags]
         private enum ModemControl : byte
         {
@@ -533,9 +458,6 @@ namespace Antmicro.Renode.Peripherals.UART
 
         }
 
-        /*
-         * These are the definitions for the Modem Status Register
-         */
         [Flags]
         private enum ModemStatus : byte
         {
@@ -550,10 +472,6 @@ namespace Antmicro.Renode.Peripherals.UART
             AnyDelta = 0x0F
         }
 
-
-        /*
-         * These are the definitions for the Line Status Register
-         */
         [Flags]
         private enum LineStatus : byte
         {
@@ -568,9 +486,6 @@ namespace Antmicro.Renode.Peripherals.UART
             InterruptAny = 0x1E
         }
 
-        /*
-         * These are the definitions for the FIFO Control Register
-         */
         [Flags]
         private enum FifoControl : byte
         {
@@ -596,7 +511,6 @@ namespace Antmicro.Renode.Peripherals.UART
                 {
                     return Bits.One;
                 }
-                // is word length is equal to 5? then 1.5 else 2
                 return ((byte)lineControl & 3u) == 0 ? Bits.OneAndAHalf : Bits.Two;
             }
         }
