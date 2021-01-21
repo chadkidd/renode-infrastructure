@@ -23,12 +23,12 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 {(long)Registers.Mode, new DoubleWordRegister(this, 0x0)
                     .WithValueField(0, 3, name: "OTPC_MODE_MODE")
                     .WithReservedBits(3, 1)
-                    .WithTag("OTPC_MODE_USE_DMA", 4, 1)
-                    .WithTag("OTPC_MODE_FIFO_FLUSH", 5, 1)
-                    .WithTag("OTPC_MODE_ERR_RESP_DIS", 6, 1)
+                    .WithTaggedFlag("OTPC_MODE_USE_DMA", 4)
+                    .WithTaggedFlag("OTPC_MODE_FIFO_FLUSH", 5)
+                    .WithTaggedFlag("OTPC_MODE_ERR_RESP_DIS", 6)
                     .WithReservedBits(7, 1)
-                    .WithTag("OTPC_MODE_USE_SP_ROWS", 8, 1)
-                    .WithTag("OTPC_MODE_RLD_RR_REQ", 9, 1)
+                    .WithTaggedFlag("OTPC_MODE_USE_SP_ROWS", 8)
+                    .WithTaggedFlag("OTPC_MODE_RLD_RR_REQ", 9)
                     .WithReservedBits(10, 21)
                 },
                 
