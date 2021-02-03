@@ -50,7 +50,11 @@ namespace Antmicro.Renode.Peripherals.Timers
         protected override void DefineRegisters()
         {
             Registers.Control.Define(this, 0x0)
-                .WithFlag(0, name: "CAPTIM_EN", writeCallback: (_, value) => innerTimer.Enabled = value)
+                .WithFlag(0, name: "CAPTIM_EN", writeCallback: (_, value) =>
+                {
+                    innerTimer.Enabled = value;
+                    this.Log(LogLevel.Noisy, "Timer enabled = {0}", innerTimer.Enabled);
+                })
                 .WithTaggedFlag("CAPTIM_ONESHOT_MODE_EN", 1)
                 .WithFlag(2, name: "CAPTIM_COUNT_DOWN_EN", writeCallback: (_, value) =>
                 {

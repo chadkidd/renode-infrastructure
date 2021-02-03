@@ -13,7 +13,7 @@ using Antmicro.Renode.Peripherals.Bus;
 
 namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
-    [AllowedTranslations(AllowedTranslation.ByteToWord)]
+    [AllowedTranslations(AllowedTranslation.ByteToWord | AllowedTranslation.DoubleWordToWord)]
     public sealed class DA1468x_CRG : IWordPeripheral, IKnownSize
     {
         public DA1468x_CRG(Machine machine)
@@ -29,13 +29,22 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithTaggedFlag("TRNG_CLK_ENABLE", 8)
                     .WithFlag(9, name: "OTP_ENABLE")
                     .WithValueField(10, 2, name: "QSPI_DIV")
-                    .WithTaggedFlag("QSPI_ENABLE", 12)
+                    .WithFlag(12, name: "QSPI_ENABLE")
                     .WithReservedBits(13, 3)
                 },
                 {(long)Registers.ClkFreqTrim, new WordRegister(this, 0x0)
                     .WithValueField(0, 8, name: "FINE_ADJ")
                     .WithValueField(8, 3, name: "COARSE_ADJ")
                     .WithReservedBits(11, 5)
+                },
+                {(long)Registers.ClkRadio, new WordRegister(this, 0x0)
+                    .WithValueField(0, 2, name: "RFCU_DIV")
+                    .WithReservedBits(2, 1)
+                    .WithFlag(3, name: "RFCU_ENABLE")
+                    .WithValueField(4, 2, name: "BLE_DIV")
+                    .WithFlag(6, name: "BLE_LP_RESET")
+                    .WithFlag(7, name: "BLE_ENABLE")
+                    .WithReservedBits(8, 8)
                 },
                 {(long)Registers.ClkCtrl, new WordRegister(this, 0x2001)
                     .WithEnumField<WordRegister, SysClkSel>(0, 2, name: "SYS_CLK_SEL",
@@ -75,10 +84,10 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithFlag(2, name: "BLE_SLEEP", writeCallback: (_, val) => BleSleep = val, valueProviderCallback: _ => BleSleep)
                     .WithReservedBits(3, 1)
                     .WithTaggedFlag("MAP_BANDGAP_EN", 4)
-                    .WithTaggedFlag("RESET_ON_WAKEUP", 5)
+                    .WithFlag(5, name: "RESET_ON_WAKEUP")
                     .WithTag("OTP_COPY_DIV", 6, 2)
                     .WithValueField(8, 5, name: "RETAIN_RAM")
-                    .WithTaggedFlag("ENABLE_CLKLESS", 13)
+                    .WithFlag(13, name: "ENABLE_CLKLESS")
                     .WithFlag(14, name: "RETAIN_CACHE")
                     .WithTaggedFlag("RETAIN_ECCRAM", 15)
                 },
@@ -92,7 +101,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithTaggedFlag("TIMEOUT_DISABLE", 9)
                     .WithTaggedFlag("CACHERAM_MUX", 10)
                     .WithTaggedFlag("DEV_PHASE", 11)
-                    .WithTaggedFlag("QSPI_INIT", 12)
+                    .WithFlag(12, name: "QSPI_INIT")
                     .WithTaggedFlag("OTP_COPY", 13)
                     .WithTaggedFlag("REMAP_INTVEC", 14)
                     .WithTaggedFlag("SW_RESET", 15)
@@ -137,6 +146,24 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithFlag(14, name: "LDO_SUPPLY_USE_BGREF")
                     .WithReservedBits(15, 1)
                 },
+                {(long)Registers.AnalogStatus, new WordRegister(this, 0x1824)
+                    .WithFlag(0, name: "LDO_RADIO_OK", mode: FieldMode.Read)
+                    .WithFlag(1, name: "COMP_VBAT_OK", mode: FieldMode.Read)
+                    .WithFlag(2, name: "VBUS_AVAILABLE", mode: FieldMode.Read)  
+                    .WithFlag(3, name: "NEWBAT", mode: FieldMode.Read)
+                    .WithFlag(4, name: "LDO_SUPPLY_VBAT_OK", mode: FieldMode.Read)   
+                    .WithFlag(5, name: "LDO_SUPPLY_USB_OK", mode: FieldMode.Read)  
+                    .WithFlag(6, name: "BANDGAP_OK", mode: FieldMode.Read)
+                    .WithFlag(7, name: "COMP_VDD_HIGH", mode: FieldMode.Read)
+                    .WithFlag(8, name: "LCO_CORE_OK", mode: FieldMode.Read)
+                    .WithFlag(9, name: "LDO_1V8_PA_OK", mode: FieldMode.Read)
+                    .WithFlag(10, name: "LDO_1V8_FLASH_OK", mode: FieldMode.Read)
+                    .WithFlag(11, name: "COMP_VBUS_HIGH", mode: FieldMode.Read) 
+                    .WithFlag(12, name: "COMP_VBUS_LOW", mode: FieldMode.Read) 
+                    .WithFlag(13, name: "COMP_V33_HIGH", mode: FieldMode.Read)
+                    .WithFlag(14, name: "COMP_1V8_FLASH_HIGH", mode: FieldMode.Read)
+                    .WithFlag(15, name: "COMP_1V8_PA_HIGH", mode: FieldMode.Read)
+                },
                 {(long)Registers.BodCtrl, new WordRegister(this, 0x700)
                     .WithTag("VDD_TRIM", 0, 2)
                     .WithTag("1V8_TRIM", 2, 2)
@@ -150,7 +177,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithFlag(1, name: "BOD_VDD_EN")
                     .WithTaggedFlag("BOD_V33_EN", 2)
                     .WithTaggedFlag("BOD_1V8_PA_EN", 3)
-                    .WithTaggedFlag("BOD_1V8_FLASH_EN", 4)
+                    .WithFlag(4, name: "BOD_1V8_FLASH_EN")
                     .WithFlag(5, name: "BOD_VBAT_EN")
                     .WithTaggedFlag("BOD_V14_EN", 6)
                     .WithReservedBits(7, 9)
@@ -237,6 +264,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         {
             ClkAmba = 0x0,
             ClkFreqTrim = 0x2,
+            ClkRadio = 0x8,
             ClkCtrl = 0xA,
             ClkTmr = 0xC,
             PmuCtrl = 0x10,
@@ -245,6 +273,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             Clk32K = 0x20,
             Clk16M = 0x22,
             BandGap = 0x28,
+            AnalogStatus = 0x2A,
             BodCtrl = 0x34,
             BodCtrl2 = 0x36,
             LdoCtrl1 = 0x3A,

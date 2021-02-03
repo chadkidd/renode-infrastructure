@@ -369,6 +369,7 @@
     <Compile Include="Peripherals\UART\DA1468x_UART.cs" />
     <Compile Include="Peripherals\Timers\DA1468x_Timer1.cs" />
     <Compile Include="Peripherals\Analog\DA1468x_ADC.cs" />
+    <Compile Include="Peripherals\SPI\DA1468x_QSPI.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ProjectExtensions>
