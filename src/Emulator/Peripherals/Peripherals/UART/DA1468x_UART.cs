@@ -29,7 +29,7 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             get
             {
-                return 0x100;
+                return 0x200;
             }
         }
 
@@ -100,7 +100,8 @@ namespace Antmicro.Renode.Peripherals.UART
                     Update();
                     break;
 
-                case Register.InterruptEnable:
+               case Register.InterruptEnable:
+               case Register.Uart2_InterruptEnable:
                     interruptEnable = (InterruptEnableLevel)value;
                     if((fifoControl & FifoControl.IsEnabled) != 0 && (interruptEnable & InterruptEnableLevel.ProgrammableTransmitHoldEmptyInterruptMode) != 0)
                     {
@@ -246,6 +247,7 @@ namespace Antmicro.Renode.Peripherals.UART
                         break;
 
                     case Register.InterruptEnable:
+                    case Register.Uart2_InterruptEnable:
                         value = (byte)interruptEnable;
                         break;
 
@@ -407,6 +409,7 @@ namespace Antmicro.Renode.Peripherals.UART
             Scratchpad = 0x1C,
             UartBusy = 0x7C,
             FractionalDivisor = 0xC0,
+            Uart2_InterruptEnable = 0x104,
         }
 
         [Flags]

@@ -19,8 +19,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
     {
         public DA1468x_CRG(Machine machine)
         {
-            Xtal16Interrupt = new GPIO();
-            VbusRdyInterrupt = new GPIO();
+            IRQ = new GPIO();
             var registersMap = new Dictionary<long, WordRegister>
             {
                 {(long)Registers.ClkAmba, new WordRegister(this, 0x22)
@@ -58,7 +57,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                         this.Log(LogLevel.Warning, "XTAL16M_DISABLE = {0}", val);
                         if(!val)
                         {
-                            Xtal16Interrupt.Blink();
+                            IRQ.Blink();
                         }
                     })
                     .WithTaggedFlag("XTAL32M_MODE", 3)
@@ -164,10 +163,10 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithFlag(14, name: "LDO_SUPPLY_USE_BGREF")
                     .WithReservedBits(15, 1)
                 },
-                {(long)Registers.AnalogStatus, new WordRegister(this, 0x1820)
+                {(long)Registers.AnalogStatus, new WordRegister(this, 0x1824)
                     .WithFlag(0, name: "LDO_RADIO_OK", mode: FieldMode.Read)
                     .WithFlag(1, name: "COMP_VBAT_OK", mode: FieldMode.Read)
-                    .WithFlag(2, name: "VBUS_AVAILABLE", mode: FieldMode.Read, valueProviderCallback: (_) => VbusAvailable)
+                    .WithFlag(2, name: "VBUS_AVAILABLE", mode: FieldMode.Read)  
                     .WithFlag(3, name: "NEWBAT", mode: FieldMode.Read)
                     .WithFlag(4, name: "LDO_SUPPLY_VBAT_OK", mode: FieldMode.Read)   
                     .WithFlag(5, name: "LDO_SUPPLY_USB_OK", mode: FieldMode.Read)  
@@ -181,15 +180,6 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithFlag(13, name: "COMP_V33_HIGH", mode: FieldMode.Read)
                     .WithFlag(14, name: "COMP_1V8_FLASH_HIGH", mode: FieldMode.Read)
                     .WithFlag(15, name: "COMP_1V8_PA_HIGH", mode: FieldMode.Read)
-                },
-                {(long)Registers.VbusIrqMask, new WordRegister(this, 0x3)
-                    .WithFlag(0, name: "VBUS_IRQ_EN_FALL")
-                    .WithFlag(1, name: "VBUS_IRQ_EN_RISE")
-                    .WithReservedBits(2, 14)
-                },
-                {(long)Registers.VbusIrqClear, new WordRegister(this, 0x0)
-                    .WithFlag(0, name: "VBUS_IRQ_CLEAR")
-                    .WithReservedBits(1, 15)
                 },
                 {(long)Registers.BodCtrl, new WordRegister(this, 0x700)
                     .WithTag("VDD_TRIM", 0, 2)
@@ -271,26 +261,13 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             registers.Write(offset, value);
         }
 
-        public void SetVbusRdy(bool rdy)
-        {
-            VbusAvailable = rdy;
-            if(rdy)
-            {
-                VbusRdyInterrupt.Blink();
-            }
-        }
-
         public void Reset()
         {
-            Xtal16Interrupt.Unset();
-            VbusRdyInterrupt.Unset();
-            VbusAvailable = false;
+            IRQ.Unset();
             registers.Reset();
         }
 
-        public GPIO Xtal16Interrupt { get; }
-
-        public GPIO VbusRdyInterrupt { get; }
+        public GPIO IRQ { get; }
 
         public long Size => 0x6B;
 
@@ -301,7 +278,6 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private bool BleSleep = true;
         private bool RadioSleep = true;
         private bool PeriphSleep = true;
-        private bool VbusAvailable = false;
 
         private enum SysClkSel
         {
@@ -326,8 +302,6 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             ClkRCX20K = 0x24,
             BandGap = 0x28,
             AnalogStatus = 0x2A,
-            VbusIrqMask = 0x30,
-            VbusIrqClear = 0x32,
             BodCtrl = 0x34,
             BodCtrl2 = 0x36,
             LdoCtrl1 = 0x3A,

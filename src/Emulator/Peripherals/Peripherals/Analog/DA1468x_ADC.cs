@@ -49,7 +49,14 @@ namespace Antmicro.Renode.Peripherals.Analog
                 .WithFlag(5, name: "GP_ADC_MINT")
                 .WithFlag(6, name: "GP_ADC_SE")
                 .WithFlag(7, name: "GP_ADC_MUTE")
-                .WithValueField(8, 5, name: "GP_ADC_SEL")
+                .WithValueField(8, 5, name: "GP_ADC_SEL", writeCallback: (_, value) =>
+                {
+                    adcSelect = value;
+                    if(value == 14)
+                    {
+                        adcResult = 0xC000;
+                    }
+                })
                 .WithFlag(13, name: "GP_ADC_SIGN")
                 .WithFlag(14, name: "GP_ADC_CHOP")
                 .WithFlag(15, name: "GP_ADC_LDO_ZERO")
@@ -86,6 +93,7 @@ namespace Antmicro.Renode.Peripherals.Analog
 
         private IFlagRegisterField interrupt;
         private ushort adcResult;
+        private uint adcSelect = 0;
 
         private enum Registers
         {

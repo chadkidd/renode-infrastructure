@@ -31,21 +31,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithTaggedFlag("OTPC_MODE_RLD_RR_REQ", 9)
                     .WithReservedBits(10, 21)
                 },
-                {(long)Registers.Stat, new DoubleWordRegister(this, 0x40)
-                    .WithFlag(0, name: "OTPC_STAT_PRDY",  mode: FieldMode.Read)
-                    .WithFlag(1, name: "OTPC_STAT_PERR_UNC",  mode: FieldMode.Read)
-                    .WithFlag(2, name: "OTPC_STAT_COR",  mode: FieldMode.Read)
-                    .WithFlag(3, name: "OTPC_STAT_PZERO",  mode: FieldMode.Read)
-                    .WithFlag(4, name: "OTPC_STAT_TRDY", mode: FieldMode.Read)
-                    .WithFlag(5, name: "OTPC_STAT_TERROR", mode: FieldMode.Read)
-                    .WithFlag(6, name: "OTPC_START_ARDY", mode: FieldMode.Read)
-                    .WithFlag(7, name: "OTPC_STAT_RERROR", mode: FieldMode.WriteOneToClear | FieldMode.ReadToClear)
-                    .WithValueField(8, 4, name: "OTPC_STAT_FWORDS", mode: FieldMode.Read)
-                    .WithReservedBits(12, 4)
-                    .WithValueField(16, 14, name: "OTPC_STAT_NWORDS", mode: FieldMode.Read)
-                    .WithReservedBits(30, 2)
-                },
-
+                
             };
 
             registers = new DoubleWordRegisterCollection(this, registersMap);
@@ -74,7 +60,6 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private enum Registers
         {
             Mode = 0x0,
-            Stat = 0x8,
         }
     }
 }

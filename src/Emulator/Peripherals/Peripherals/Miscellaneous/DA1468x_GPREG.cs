@@ -42,6 +42,29 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     .WithFlag(7, name: "FRZ_SWTIM2")
                     .WithReservedBits(8, 8)
                 },
+                {(long)Registers.PllSysCtrl1, new WordRegister(this, 0x100)
+                    .WithFlag(0, out pllEnable, name: "PLL_EN")
+                    .WithFlag(1, out ldoPllEnable, name: "LDO_PLL_ENABLE")
+                    .WithFlag(2, name: "LDO_PLL_VREF_HOLD")
+                    .WithReservedBits(3, 5)
+                    .WithValueField(8, 7, name: "PLL_R_DIV")
+                    .WithReservedBits(15, 1)
+                },
+                {(long)Registers.PllSysCtrl2, new WordRegister(this, 0x26)
+                    .WithValueField(0, 7, name: "PLL_N_DIV")
+                    .WithReservedBits(7, 5)
+                    .WithValueField(12, 2, name: "PLL_DEL_SEL")
+                    .WithFlag(14, name: "PLL_SEL_MIN_CUR_INT")
+                    .WithReservedBits(15, 1)
+                },
+                {(long)Registers.PllSysStatus, new WordRegister(this, 0x3)
+                    .WithFlag(0, name: "PLL_LOCK_FINE", mode: FieldMode.Read, valueProviderCallback: (_) => pllEnable.Value)
+                    .WithFlag(1, name: "LDO_PLL_OK", mode: FieldMode.Read, valueProviderCallback: (_) => ldoPllEnable.Value)
+                    .WithReservedBits(2, 3)
+                    .WithTag("PLL_BEST_MIN_CUR", 5, 6)
+                    .WithTaggedFlag("PLL_CALIBR_END", 11)
+                    .WithReservedBits(12, 4)
+                },
 
             };
 
@@ -66,11 +89,15 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         public long Size => 0x18;
 
         private readonly WordRegisterCollection registers;
-
+        private readonly IFlagRegisterField ldoPllEnable;
+        private readonly IFlagRegisterField pllEnable;
         private enum Registers
         {
             SetFreeze = 0x0,
             ResetFreeze = 0x2,
+            PllSysCtrl1 = 0x10,
+            PllSysCtrl2 = 0x12,
+            PllSysStatus = 0x16,
         }
     }
 }
