@@ -172,6 +172,7 @@
     <Compile Include="Peripherals\Miscellaneous\SEMA4.cs" />
     <Compile Include="Peripherals\MTD\FSLNAND.cs" />
     <Compile Include="Peripherals\UART\PL011.cs" />
+    <Compile Include="Peripherals\UART\PULP_STDOUT.cs" />
     <Compile Include="Peripherals\Input\FusionF0710A.cs" />
     <Compile Include="Peripherals\Input\AR1021.cs" />
     <Compile Include="Peripherals\Miscellaneous\PrimeCellIDHelper.cs" />
@@ -376,6 +377,14 @@
     <Compile Include="Peripherals\Miscellaneous\DA1468x_WKUP.cs" />
     <Compile Include="Peripherals\USB\DA1468x_USB.cs" />
     <Compile Include="Peripherals\DMA\DA1468xDMA.cs" />
+    <Compile Include="Peripherals\Sound\PULP_I2S.cs" />
+    <Compile Include="Peripherals\Mocks\EchoI2CDevice.cs" />
+    <Compile Include="Peripherals\I2C\PULP_uDMA_I2C.cs" />
+    <Compile Include="Peripherals\SPI\PULP_uDMA_SPI.cs" />
+    <Compile Include="Peripherals\Mocks\DummySPISlave.cs" />
+    <Compile Include="Peripherals\SD\PULP_uDMA_SDIO.cs" />
+    <Compile Include="Peripherals\Sensors\PULP_uDMA_Camera.cs" />
+    <Compile Include="Peripherals\Sensors\HM01B0.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ProjectExtensions>

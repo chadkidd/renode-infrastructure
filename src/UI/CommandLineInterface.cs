@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2010-2018 Antmicro
+// Copyright (c) 2010-2021 Antmicro
 // Copyright (c) 2011-2015 Realtime Embedded
 //
 // This file is licensed under the MIT License.
@@ -41,6 +41,10 @@ namespace Antmicro.Renode.UI
             if(!options.HideLog)
             {
                 Logger.AddBackend(ConsoleBackend.Instance, "console");
+                if(options.Plain)
+                {
+                    ConsoleBackend.Instance.ColoringEnabled = false;
+                }
             }
             else
             {
@@ -61,7 +65,7 @@ namespace Antmicro.Renode.UI
                 xwt = XwtProvider.Create(new WindowedUserInterfaceProvider());
             }
 
-            if(xwt == null && options.RobotFrameworkRemoteServerPort == -1)
+            if(xwt == null && options.RobotFrameworkRemoteServerPort == -1 && !options.Console)
             {
                 if(options.Port == -1)
                 {
@@ -125,6 +129,11 @@ namespace Antmicro.Renode.UI
                         terminal = new ConsoleWindowBackendAnalyzer(true);
                         terminal.Show();
                         shell.Terminal = new NavigableTerminalEmulator(terminal.IO);
+                        if(options.Plain)
+                        {
+                            shell.Terminal.DisableColors = true;
+                        }
+
                         new System.Threading.Thread(x => shell.Start(true))
                         {
                             IsBackground = true,
@@ -150,7 +159,16 @@ namespace Antmicro.Renode.UI
         private static Shell PrepareShell(Options options, Monitor monitor)
         {
             Shell shell = null;
-            if(options.Port >= 0)
+            if(options.Console)
+            {
+                var io = new IOProvider()
+                {
+                    Backend = new ConsoleIOSource()
+                };
+                shell = ShellProvider.GenerateShell(monitor, true);
+                shell.Terminal = new NavigableTerminalEmulator(io, true);
+            }
+            else if(options.Port >= 0)
             {
                 var io = new IOProvider()
                 {
@@ -210,37 +228,12 @@ namespace Antmicro.Renode.UI
                 shell.Started += s => s.InjectInput(string.Format("i {0}{1}\n", Path.IsPathRooted(options.ScriptPath) ? "@" : "$CWD/", options.ScriptPath));
             }
 
+            if(options.Plain)
+            {
+                shell.Terminal.DisableColors = true;
+            }
+
             return shell;
-        }
-
-        private class DummyIOSource : IPassiveIOSource
-        {
-            public void CancelRead()
-            {
-            }
-
-            public void Dispose()
-            {
-            }
-
-            public void Flush()
-            {
-            }
-
-            public bool TryPeek(out int value)
-            {
-                value = 0;
-                return true;
-            }
-
-            public int Read()
-            {
-                return 0;
-            }
-
-            public void Write(byte b)
-            {
-            }
         }
     }
 }

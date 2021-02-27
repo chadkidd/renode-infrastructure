@@ -1,6 +1,7 @@
 //
 // Copyright (c) 2010-2018 Antmicro
 // Copyright (c) 2011-2015 Realtime Embedded
+// Copyright (c) 2020-2021 Microsoft
 //
 // This file is licensed under the MIT License.
 // Full license text is available in 'licenses/MIT.txt'.
@@ -29,6 +30,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
         {
             priorities = new byte[IRQCount];
             activeIRQs = new Stack<int>();
+            pendingIRQs = new SortedSet<int>();
             systick = new LimitTimer(machine.ClockSource, systickFrequency, this, nameof(systick), uint.MaxValue, Direction.Descending, false, autoUpdate: true);
             this.priorityMask = priorityMask;
             irqs = new IRQState[IRQCount];
@@ -40,7 +42,6 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                 SetPendingIRQ(15);
             };
             InitInterrupts();
-            Init();
         }
 
         public void AttachCPU(CortexM cpu)
@@ -48,7 +49,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
             this.cpu = cpu;
         }
 
-        public ManualResetEvent MaskedInterruptPresent { get { return maskedInterruptPresent; } }
+        public bool MaskedInterruptPresent { get { return maskedInterruptPresent; } }
 
         public IEnumerable<int> GetEnabledExternalInterrupts()
         {
@@ -292,6 +293,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                 {
                     irqs[result] |= IRQState.Active;
                     irqs[result] &= ~IRQState.Pending;
+                    pendingIRQs.Remove(result);
                     this.NoisyLog("Acknowledged IRQ {0}.", result);
                     activeIRQs.Push(result);
                 }
@@ -321,6 +323,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                 {
                     this.NoisyLog("Completed IRQ {0} active -> pending.", number);
                     irqs[number] |= IRQState.Pending;
+                    pendingIRQs.Add(number);
                 }
                 else
                 {
@@ -338,6 +341,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                 if((irqs[number] & IRQState.Active) == 0)
                 {
                     irqs[number] |= IRQState.Pending;
+                    pendingIRQs.Add(number);
                 }
                 FindPendingInterrupt();
             }
@@ -358,6 +362,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                     if((irqs[number] & IRQState.Active) == 0)
                     {
                         irqs[number] |= IRQState.Pending;
+                        pendingIRQs.Add(number);
                     }
                 }
                 else
@@ -375,6 +380,8 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
             {
                 irqs[i] = IRQState.Enabled;
             }
+            maskedInterruptPresent = false;
+            pendingIRQs.Clear();
         }
 
         private static int GetStartingInterrupt(long offset, bool externalInterrupt)
@@ -489,6 +496,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                             {
                                 this.DebugLog("Set pending IRQ {0}.", i);
                                 irqs[i] |= IRQState.Pending;
+                                pendingIRQs.Add(i);
                             }
                             else
                             {
@@ -496,6 +504,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                                 {
                                     this.DebugLog("Cleared pending IRQ {0}.", i);
                                     irqs[i] &= ~IRQState.Pending;
+                                    pendingIRQs.Remove(i);
                                 }
                                 else
                                 {
@@ -518,7 +527,7 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                 var preemptNeeded = activeIRQs.Count != 0;
                 var result = SpuriousInterrupt; // TODO (and some log?)
 
-                for(var i = 0; i < irqs.Length; i++)
+                foreach(int i in pendingIRQs)
                 {
                     var currentIRQ = irqs[i];
                     if(IsCandidate(currentIRQ, i) && priorities[i] < bestPriority)
@@ -539,15 +548,18 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
                         this.NoisyLog("IRQ {0} preempts {1}.", result, activeIRQs.Peek());
                     }
                 }
-                IRQ.Set(!PRIMASK && result != SpuriousInterrupt);
 
                 if(result != SpuriousInterrupt)
                 {
-                    maskedInterruptPresent.Set();
+                    maskedInterruptPresent = true;
+                    if(!PRIMASK)
+                    {
+                        IRQ.Set(true);
+                    }
                 }
                 else
                 {
-                    maskedInterruptPresent.Reset();
+                    maskedInterruptPresent = false;
                 }
 
                 return result;
@@ -556,13 +568,11 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
 
         private bool IsCandidate(IRQState state, int index)
         {
-            var result = (state & IRQState.Pending) != 0 && (state & IRQState.Enabled) != 0 && (state & IRQState.Active) == 0;
-            if (BASEPRI != 0)
-            {
-                result &= (priorities[index] < BASEPRI);
-            }
+            const IRQState mask = IRQState.Pending | IRQState.Enabled | IRQState.Active;
+            const IRQState candidate = IRQState.Pending | IRQState.Enabled;
 
-            return result;
+            return ((state & mask) == candidate) &&
+                   (basepri == 0 || priorities[index] < basepri);
         }
 
         private bool DoesAPreemptB(int priorityA, int priorityB)
@@ -576,20 +586,21 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
             return BitHelper.GetValueFromBitsArray(irqs.Skip(16 + offset * 8).Take(32).Select(irq => (irq & IRQState.Pending) != 0));
         }
 
-        [PostDeserialization]
-        private void Init()
-        {
-            maskedInterruptPresent = new ManualResetEvent(false);
-        }
-
         private bool primask;
         public bool PRIMASK
         {
             get { return primask; }
             set
             {
+                if(value == primask)
+                {
+                    return;
+                }
                 primask = value;
-                FindPendingInterrupt();
+                if(!primask)
+                {
+                    FindPendingInterrupt();
+                }
             }
         }
 
@@ -599,6 +610,10 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
             get { return basepri; }
             set
             {
+                if(value == basepri)
+                {
+                    return;
+                }
                 basepri = value;
                 FindPendingInterrupt();
             }
@@ -642,10 +657,10 @@ namespace Antmicro.Renode.Peripherals.IRQControllers
         private bool countFlag;
         private byte priorityMask;
         private Stack<int> activeIRQs;
+        private ISet<int> pendingIRQs;
         private int binaryPointPosition; // from the right
 
-        [Transient]
-        private ManualResetEvent maskedInterruptPresent;
+        private bool maskedInterruptPresent;
 
         private readonly IRQState[] irqs;
         private readonly byte[] priorities;
