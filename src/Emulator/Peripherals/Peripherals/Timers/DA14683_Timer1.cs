@@ -13,11 +13,12 @@ using Antmicro.Renode.Logging;
 namespace Antmicro.Renode.Peripherals.Timers
 {
     [AllowedTranslations(AllowedTranslation.ByteToWord)]
-    public class DA1468x_Timer1 : BasicWordPeripheral, IKnownSize
+    public class DA14683_Timer1 : BasicWordPeripheral, IKnownSize
     {
-        public DA1468x_Timer1(Machine machine) : base(machine)
+        public DA14683_Timer1(Machine machine) : base(machine)
         {
-            /*  
+            /*  The DA14683 timer is a 32-bit timer.
+             *  
              *  Notes: Chad Kidd - 1/20/2021
              *  Still TODO if required at a later date
              *  1. Divider registers in the DA1468x_CRG -> ClkCtrl(0xA) - if set will affect the divider here. 
@@ -87,28 +88,20 @@ namespace Antmicro.Renode.Peripherals.Timers
                 })
                 .WithReservedBits(8, 8)
             ;
-            Registers.TimerLowValue.Define(this, 0x0)
-                .WithValueField(0, 16, name: "CAPTIM_TIMER_VALUE", mode: FieldMode.Read,
-                    valueProviderCallback: (_) => (ushort)innerTimer.Value)
             ;
-            Registers.TimerHighValue.Define(this, 0x0)
-                .WithValueField(0, 16, name: "CAPTIM_TIMER_HVALUE", mode: FieldMode.Read,
+            Registers.TimerValue.Define(this, 0x0)
+                .WithValueField(0, 16, name: "CAPTIM_TIMER_VAL", mode: FieldMode.Read,
                     valueProviderCallback: (_) => {
                         this.Log(LogLevel.Noisy, "Timer Value has been read {0}", innerTimer.Value);
-                        return (ushort)(innerTimer.Value >> 16);
+                        return (ushort)innerTimer.Value;
                     })
             ;
-            Registers.ReloadLow.Define(this, 0x0)
+            Registers.Reload.Define(this, 0x0)
                 .WithValueField(0, 16, name: "CAPTIM_RELOAD",
                     valueProviderCallback: (_) => (ushort)innerTimer.Compare,
-                    writeCallback: (_, value) => reloadValue = value)
-            ;
-            Registers.ReloadHigh.Define(this, 0x0)
-                .WithValueField(0, 16, name: "CAPTIM_RELOAD_HIGH",
-                    valueProviderCallback: (_) => (ushort)(innerTimer.Compare >> 16),
                     writeCallback: (_, value) =>
                     {
-                        reloadValue |= (value << 16);
+                        reloadValue = value;
                         innerTimer.Compare = reloadValue;
                         if(innerTimer.Direction == Direction.Ascending && !freeRunMode.Value)
                         {
@@ -149,7 +142,7 @@ namespace Antmicro.Renode.Peripherals.Timers
         private ushort prescaler;
 
         private ComparingTimer innerTimer;
-        private const uint initialLimit = 0xFFFFFFFF;
+        private const uint initialLimit = 0xFFFF;
         private uint reloadValue = 0;
         private const int SystemClockFrequency = 16000000;
         private const int LowPowerClockFrequency = 32768;
@@ -157,13 +150,11 @@ namespace Antmicro.Renode.Peripherals.Timers
         private enum Registers : long
         {
             Control = 0x0,
-            TimerLowValue = 0x2,
+            TimerValue = 0x2,
             Status = 0x4,
-            ReloadLow = 0xA,
+            Reload = 0xA,
             Prescaler = 0xE,
             PrescalerValue = 0x14,
-            TimerHighValue = 0x1A,
-            ReloadHigh = 0x1C,
         }
     }
 }

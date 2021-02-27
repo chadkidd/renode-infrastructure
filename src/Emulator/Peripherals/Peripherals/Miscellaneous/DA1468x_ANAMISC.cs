@@ -10,242 +10,111 @@ using System.Collections.Generic;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Core.Structure.Registers;
 using Antmicro.Renode.Peripherals.Bus;
-using Antmicro.Renode.Logging;
 
 namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
     [AllowedTranslations(AllowedTranslation.ByteToWord | AllowedTranslation.DoubleWordToWord)]
-    public sealed class DA1468x_CRG : IWordPeripheral, IKnownSize
+    public sealed class DA1468x_ANAMISC : IWordPeripheral, IKnownSize
     {
-        public DA1468x_CRG(Machine machine)
+        public DA1468x_ANAMISC(Machine machine)
         {
-            IRQ = new GPIO();
             var registersMap = new Dictionary<long, WordRegister>
             {
-                {(long)Registers.ClkAmba, new WordRegister(this, 0x22)
-                    .WithValueField(0, 3, name: "HCLK_DIV")
-                    .WithReservedBits(3, 1)
-                    .WithValueField(4, 2, name: "PCLK_DIV")
-                    .WithTaggedFlag("AES_CLK_ENABLE", 6)
-                    .WithTaggedFlag("ECC_CLK_ENABLE", 7)
-                    .WithTaggedFlag("TRNG_CLK_ENABLE", 8)
-                    .WithFlag(9, name: "OTP_ENABLE")
-                    .WithValueField(10, 2, name: "QSPI_DIV")
-                    .WithFlag(12, name: "QSPI_ENABLE")
-                    .WithReservedBits(13, 3)
+                {
+                (long)Registers.AnaTest, new WordRegister(this, 0x0)
+                   .WithValueField(0, 4, name: "TEST_STRUCTURE")
+                   .WithFlag(4, name: "ACORE_TESTBUS_EN")
+                   .WithReservedBits(5, 11)
                 },
-                {(long)Registers.ClkFreqTrim, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "FINE_ADJ")
-                    .WithValueField(8, 3, name: "COARSE_ADJ")
-                    .WithReservedBits(11, 5)
-                },
-                {(long)Registers.ClkRadio, new WordRegister(this, 0x0)
-                    .WithValueField(0, 2, name: "RFCU_DIV")
-                    .WithReservedBits(2, 1)
-                    .WithFlag(3, name: "RFCU_ENABLE")
-                    .WithValueField(4, 2, name: "BLE_DIV")
-                    .WithFlag(6, name: "BLE_LP_RESET")
-                    .WithFlag(7, name: "BLE_ENABLE")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.ClkCtrl, new WordRegister(this, 0x2001)
-                    .WithEnumField<WordRegister, SysClkSel>(0, 2, name: "SYS_CLK_SEL",
-                        writeCallback: (_, val) => ClockSelection = val,
-                        valueProviderCallback: _ => ClockSelection)
-                    .WithFlag(2, name: "XTAL16M_DISABLE", writeCallback: (_, val) =>
-                    {
-                        this.Log(LogLevel.Warning, "XTAL16M_DISABLE = {0}", val);
-                        if(!val)
-                        {
-                            IRQ.Blink();
-                        }
-                    })
-                    .WithTaggedFlag("XTAL32M_MODE", 3)
-                    .WithTaggedFlag("USB_CLK_SRC", 4)
-                    .WithTaggedFlag("PLL_DIV2", 5)
-                    .WithTaggedFlag("DIVN_XTAL32M_MODE", 6)
-                    .WithTaggedFlag("DIVN_SYNC_LEVEL", 7)
-                    .WithValueField(8, 2, name: "CLK32K_SOURCE")
-                    .WithReservedBits(10, 2)
-                    .WithFlag(12, FieldMode.Read, name: "RUNNING_AT_32K", valueProviderCallback: _ => ClockSelection == SysClkSel.LowPower)
-                    .WithFlag(13, FieldMode.Read, name: "RUNNING_AT_RC16M", valueProviderCallback: _ => ClockSelection == SysClkSel.RC16M)
-                    .WithFlag(14, FieldMode.Read, name: "RUNNING_AT_XTAL16M", valueProviderCallback: _ => ClockSelection == SysClkSel.XTAL16M)
-                    .WithFlag(15, FieldMode.Read, name: "RUNNING_AT_PLL96M", valueProviderCallback: _ => ClockSelection == SysClkSel.Pll96Mhz)
-                },
-                {(long)Registers.ClkTmr, new WordRegister(this, 0x0)
-                    .WithValueField(0, 2, name: "TMR0_DIV")
-                    .WithFlag(2, name: "TMR0_ENABLE")
-                    .WithFlag(3, name: "TMR0_CLK_SEL")
-                    .WithValueField(4, 2, name: "TMR1_DIV")
-                    .WithFlag(6, name: "TMR1_ENABLE")
-                    .WithFlag(7, name: "TMR1_CLK_SEL")
-                    .WithValueField(8, 2, name: "TMR2_DIV")
-                    .WithFlag(10, name: "TMR2_ENABLE")
-                    .WithFlag(11, name: "TMR2_CLK_SEL")
-                    .WithTaggedFlag("BREATH_ENABLE", 12)
-                    .WithTaggedFlag("WAKEUPCT_ENABLE", 13)
-                    .WithTaggedFlag("P06_TMR1_PWM_MODE", 14)
+                {
+                (long)Registers.Ctrl1, new WordRegister(this, 0x2000)
+                    .WithValueField(0, 5, name: "CHARGE_LEVEL")
+                    .WithFlag(5, name: "CHARGE_ON")
+                    .WithTaggedFlag("NTC_DISABLE", 6)
+                    .WithTaggedFlag("NTC_LOW_DISABLE", 7)
+                    .WithValueField(8, 4, name: "CHARGE_CUR")
+                    .WithValueField(12, 2, name: "DIE_TEMP_SET")
+                    .WithTaggedFlag("DIE_TEMP_DISABLE", 14)
                     .WithReservedBits(15, 1)
                 },
-                {(long)Registers.PmuCtrl, new WordRegister(this, 0xF)
-                    .WithFlag(0, name: "PERIPH_SLEEP", writeCallback: (_, val) => PeriphSleep = val, valueProviderCallback: _ => PeriphSleep)
-                    .WithFlag(1, name: "RADIO_SLEEP", writeCallback: (_, val) => RadioSleep = val, valueProviderCallback: _ => RadioSleep)
-                    .WithFlag(2, name: "BLE_SLEEP", writeCallback: (_, val) => BleSleep = val, valueProviderCallback: _ => BleSleep)
-                    .WithReservedBits(3, 1)
-                    .WithTaggedFlag("MAP_BANDGAP_EN", 4)
-                    .WithFlag(5, name: "RESET_ON_WAKEUP")
-                    .WithTag("OTP_COPY_DIV", 6, 2)
-                    .WithValueField(8, 5, name: "RETAIN_RAM")
-                    .WithFlag(13, name: "ENABLE_CLKLESS")
-                    .WithFlag(14, name: "RETAIN_CACHE")
-                    .WithTaggedFlag("RETAIN_ECCRAM", 15)
+                {(long)Registers.Ctrl2, new WordRegister(this, 0xF07)
+                    .WithValueField(0, 4, name: "CURRENT_GAIN_TRIM")
+                    .WithValueField(4, 4, name: "CHARGER_VFLOAT_ADJ")
+                    .WithValueField(8, 5, name: "CURRENT_OFFSET_TRIM")
+                    .WithValueField(13, 3, name: "CHARGER_TEST")
                 },
-                {(long)Registers.SysCtrl, new WordRegister(this, 0x20)
-                    .WithValueField(0, 3, name: "REMAP_ADR0")
-                    .WithValueField(3, 2, name: "REMAP_RAMS")
-                    .WithFlag(5, name: "PAD_LATCH_EN")
-                    .WithFlag(6, name: "OTPC_RESET_REQ")
-                    .WithFlag(7, name: "DEBUGGER_ENABLE")
-                    .WithTaggedFlag("DRA_OFF", 8)
-                    .WithTaggedFlag("TIMEOUT_DISABLE", 9)
-                    .WithTaggedFlag("CACHERAM_MUX", 10)
-                    .WithTaggedFlag("DEV_PHASE", 11)
-                    .WithFlag(12, name: "QSPI_INIT")
-                    .WithTaggedFlag("OTP_COPY", 13)
-                    .WithTaggedFlag("REMAP_INTVEC", 14)
-                    .WithTaggedFlag("SW_RESET", 15)
-                },
-                {(long)Registers.SysStat, new WordRegister(this, 0x5C5)     //ReadOnly
-                    .WithFlag(0, name: "RAD_IS_DOWN", valueProviderCallback: _ => RadioSleep == true)
-                    .WithFlag(1, name: "RAD_IS_UP", valueProviderCallback: _ => RadioSleep == false)
-                    .WithFlag(2, name: "PER_IS_DOWN", valueProviderCallback: _ => PeriphSleep == true)
-                    .WithFlag(3, name: "PER_IS_UP", valueProviderCallback: _ => PeriphSleep == false)
-                    .WithTaggedFlag("XTAL16_SW2", 4)
-                    .WithFlag(5, name: "DBG_IS_ACTIVE")
-                    .WithFlag(6, name: "XTAL16_TRIM_READY")
-                    .WithFlag(7, name: "XTAL16_SETTLE_READY")
-                    .WithFlag(8, name: "BLE_IS_DOWN", valueProviderCallback: _ => BleSleep == true)
-                    .WithFlag(9, name: "BLE_IS_UP", valueProviderCallback: _ => BleSleep == false)
-                    .WithReservedBits(10, 6)
-                },
-                {(long)Registers.Clk32K, new WordRegister(this, 0x7AE)
-                    .WithFlag(0, name: "XTAL32K_ENABLE")
-                    .WithValueField(1, 2, name: "XTAL32K_RBIAS")
-                    .WithValueField(3, 4, name: "XTAL32K_CUR")
-                    .WithFlag(7, name: "RC32K_ENABLE")
-                    .WithValueField(8, 4, name: "RC32K_TRIM")
-                    .WithFlag(12, name: "XTAL32K_DISABLE_AMPREG")
-                    .WithReservedBits(13, 3)
-                },
-                {(long)Registers.Clk16M, new WordRegister(this, 0x54A0)
-                    .WithFlag(0, name: "RC16M_ENABLE")
-                    .WithValueField(1, 4, name: "RC16M_TRIM")
-                    .WithValueField(5, 3, name: "XTAL16_CUR_SET")
-                    .WithTaggedFlag("XTAL16_MAX_CURRENT", 8)
-                    .WithTaggedFlag("XTAL16_EXT_CLK_ENABLE", 9)
-                    .WithValueField(10, 3, name: "XTAL16_AMP_TRIM")
-                    .WithFlag(13, name: "XTAL16_SPIKE_FLT_BYPASS")
-                    .WithFlag(14, name: "XTAL16_HPASS_FLT_EN")
-                    .WithReservedBits(15, 1)
-                },
-                {(long)Registers.ClkRCX20K, new WordRegister(this, 0x4C2)
-                    .WithValueField(0, 4, name: "RCX20K_TRIM")
-                    .WithValueField(4, 4, name: "RCX20K_NTC")
-                    .WithValueField(8, 2, name: "RCX20K_BIAS")
-                    .WithFlag(10, name: "RCX20K_LOWF")
-                    .WithFlag(11, name: "RCX20K_ENABLE")
-                    .WithReservedBits(12, 4)
-                },
-                {(long)Registers.BandGap, new WordRegister(this, 0x0)
-                    .WithValueField(0, 5, name: "BGR_TRIM")
-                    .WithValueField(5, 5, name: "BGR_ITRIM")
-                    .WithValueField(10, 4, name: "LDO_SLEEP_TRIM")
-                    .WithFlag(14, name: "LDO_SUPPLY_USE_BGREF")
-                    .WithReservedBits(15, 1)
-                },
-                {(long)Registers.AnalogStatus, new WordRegister(this, 0x1824)
-                    .WithFlag(0, name: "LDO_RADIO_OK", mode: FieldMode.Read)
-                    .WithFlag(1, name: "COMP_VBAT_OK", mode: FieldMode.Read)
-                    .WithFlag(2, name: "VBUS_AVAILABLE", mode: FieldMode.Read)  
-                    .WithFlag(3, name: "NEWBAT", mode: FieldMode.Read)
-                    .WithFlag(4, name: "LDO_SUPPLY_VBAT_OK", mode: FieldMode.Read)   
-                    .WithFlag(5, name: "LDO_SUPPLY_USB_OK", mode: FieldMode.Read)  
-                    .WithFlag(6, name: "BANDGAP_OK", mode: FieldMode.Read)
-                    .WithFlag(7, name: "COMP_VDD_HIGH", mode: FieldMode.Read)
-                    .WithFlag(8, name: "LCO_CORE_OK", mode: FieldMode.Read)
-                    .WithFlag(9, name: "LDO_1V8_PA_OK", mode: FieldMode.Read)
-                    .WithFlag(10, name: "LDO_1V8_FLASH_OK", mode: FieldMode.Read)
-                    .WithFlag(11, name: "COMP_VBUS_HIGH", mode: FieldMode.Read) 
-                    .WithFlag(12, name: "COMP_VBUS_LOW", mode: FieldMode.Read) 
-                    .WithFlag(13, name: "COMP_V33_HIGH", mode: FieldMode.Read)
-                    .WithFlag(14, name: "COMP_1V8_FLASH_HIGH", mode: FieldMode.Read)
-                    .WithFlag(15, name: "COMP_1V8_PA_HIGH", mode: FieldMode.Read)
-                },
-                {(long)Registers.BodCtrl, new WordRegister(this, 0x700)
-                    .WithTag("VDD_TRIM", 0, 2)
-                    .WithTag("1V8_TRIM", 2, 2)
-                    .WithTag("1V4_TRIM", 4, 2)
-                    .WithTag("V33_TRIM", 6, 2)
-                    .WithValueField(8, 3, name: "BOD_VDD_LVL")                
-                    .WithReservedBits(11, 5)
-                },
-                {(long)Registers.BodCtrl2, new WordRegister(this, 0x3)
-                    .WithFlag(0, name: "BOD_RESET_EN")
-                    .WithFlag(1, name: "BOD_VDD_EN")
-                    .WithTaggedFlag("BOD_V33_EN", 2)
-                    .WithTaggedFlag("BOD_1V8_PA_EN", 3)
-                    .WithFlag(4, name: "BOD_1V8_FLASH_EN")
-                    .WithFlag(5, name: "BOD_VBAT_EN")
-                    .WithTaggedFlag("BOD_V14_EN", 6)
+                {(long)Registers.Status, new WordRegister(this, 0x0)
+                    .WithFlag(0, name: "CHARGER_CC_MODE")
+                    .WithTaggedFlag("CHARGER_CV_MODE", 1)
+                    .WithTaggedFlag("END_OF_CHARGE", 2)
+                    .WithTaggedFlag("CHARGER_BATTEMP_LOW", 3)
+                    .WithTaggedFlag("CHARGER_BATTEMP_OK", 4)
+                    .WithTaggedFlag("CHARGER_BATTEMP_HIGH", 5)
+                    .WithTaggedFlag("CHARGER_TMODE_PROT", 6)
                     .WithReservedBits(7, 9)
                 },
-                {(long)Registers.LdoCtrl1, new WordRegister(this, 0xA7)
-                    .WithValueField(0, 2, name: "LDO_CORE_CURLIM")
-                    .WithValueField(2, 2, name: "LDO_VBAT_RET_LEVEL")
-                    .WithValueField(4, 2, name: "LDO_SUPPLY_VBAT_LEVEL")
-                    .WithValueField(6, 2, name: "LDO_SUPPLY_USB_LEVEL")
-                    .WithValueField(8, 3, name: "LDO_CORE_SETVDD")
-                    .WithValueField(11, 3, name: "LDO_RADIO_SETVDD")
-                    .WithFlag(14,name: "LDO_RADIO_ENABLE")
-                    .WithReservedBits(15, 1)
+                {(long)Registers.SocCtrl1, new WordRegister(this, 0xD880)
+                    .WithFlag(0, name: "SOC_ENABLE")
+                    .WithFlag(1, name: "SOC_RESET_CHARGE")
+                    .WithFlag(2, name: "SOC_RESET_AVG")
+                    .WithFlag(3, name: "SOC_MUTE")
+                    .WithFlag(4, name: "SOC_GPIO")
+                    .WithFlag(5, name: "SOC_SIGN")
+                    .WithValueField(6, 2, name: "SOC_IDAC")
+                    .WithFlag(8, name: "SOC_LPF")
+                    .WithValueField(9, 3, name: "SOC_CLK")
+                    .WithValueField(12, 2, name: "SOC_BIAS")
+                    .WithValueField(14, 2, name: "SOC_CINT")
                 },
-                {(long)Registers.LdoCtrl2, new WordRegister(this, 0xF)
-                    .WithFlag(0, name: "LDO_1V2_ON")
-                    .WithFlag(1, name: "LDO_3V3_ON")
-                    .WithFlag(2, name: "LDO_1V8_FLASH_ON")
-                    .WithFlag(3, name: "LDO_1V8_PA_ON")
-                    .WithFlag(4, name: "LDO_VBAT_RET_DISABLE")
-                    .WithFlag(5, name: "LDO_1V8_FLASH_RET_DISABLE")
-                    .WithFlag(6, name: "LDO_1V8_PA_RET_DISABLE")
-                    .WithReservedBits(7, 9)
+                {(long)Registers.SocCtrl2, new WordRegister(this, 0x776A)
+                    .WithValueField(0, 2, name: "SOC_RVI")
+                    .WithValueField(2, 3, name: "SOC_SCYCLE")
+                    .WithFlag(5, name: "SOC_DCYCLE")
+                    .WithValueField(6, 2, name: "SOC_ICM")
+                    .WithValueField(8, 3, name: "SOC_CHOP")
+                    .WithFlag(11, name: "SOC_CMIREG_ENABLE")
+                    .WithValueField(12, 3, name: "SOC_MAW")
+                    .WithFlag(15, name: "SOC_DYNAVG")
                 },
-                {(long)Registers.SleepTimer, new WordRegister(this, 0x0)
-                    .WithValueField(0, 16, name: "SLEEP_TIMER")
+                {(long)Registers.SocCtrl3, new WordRegister(this, 0x11)
+                    .WithValueField(0, 2, name: "SOC_VSAT")
+                    .WithFlag(2, name: "SOC_DYNTARG")
+                    .WithFlag(3, name: "SOC_DYNHYS")
+                    .WithValueField(4, 2, name: "SOC_VCMI")
+                    .WithReservedBits(6, 10)
                 },
-                {(long)Registers.XtalRdyCtrl, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "XTALRDY_CNT")
+                {(long)Registers.ChargeCtr1, new WordRegister(this, 0x0)
+                    .WithValueField(0, 16, name: "CHARGE_CNT1", mode: FieldMode.Read)
+                },
+                {(long)Registers.ChargeCtr2, new WordRegister(this, 0x0)
+                    .WithValueField(0, 16, name: "CHARGE_CNT2", mode: FieldMode.Read)
+                },
+               {(long)Registers.ChargeCtr3, new WordRegister(this, 0x0)
+                    .WithValueField(0, 8, name: "CHARGE_CNT3", mode: FieldMode.Read)
                     .WithReservedBits(8, 8)
                 },
-                {(long)Registers.XtalRdyStat, new WordRegister(this, 0x0)
-                    .WithTag("XTALRDY_STAT", 0, 8)
-                    .WithReservedBits(8, 8)
+                {(long)Registers.SocChargeAvg, new WordRegister(this, 0x0)
+                    .WithValueField(0, 16, name: "CHARGE_AVG", mode: FieldMode.Read)
                 },
-                {(long)Registers.Xtal16MCtrl, new WordRegister(this, 0x0)
-                    .WithValueField(0, 3, name: "XTAL16M_FREQ_TRIM_SW2")
-                    .WithFlag(3, name: "XTAL16M_AMP_REG_SIG_SEL")
-                    .WithValueField(4, 2, name: "XTAL16M_TST_AON")
-                    .WithValueField(6, 2, name: "XTAL16M_SH_OVERRULE")
-                    .WithFlag(8, name: "XTAL16M_ENABLE_ZERO")
-                    .WithReservedBits(9, 7)
+               {(long)Registers.SocStatus, new WordRegister(this, 0x0)
+                    .WithFlag(0, name: "SOC_INT_OVERLOAD")
+                    .WithFlag(1, name: "SOC_INT_LOCKED")
+                    .WithReservedBits(2, 14)
                 },
-                {(long)Registers.AonSpare, new WordRegister(this, 0x0)                   
-                    .WithFlag(0, name: "OSC16_HOLD_AMP")
-                    .WithTaggedFlag("OSC16_SH_DISABLE", 1)
-                    .WithTaggedFlag("EN_BATSYS_RET", 2)
-                    .WithTaggedFlag("EN_BUSSYS_RET", 3)
-                    .WithReservedBits(4, 12)
+                {(long)Registers.ClkRefSel, new WordRegister(this, 0x0)
+                    .WithValueField(0, 2, name: "REF_CLK_SEL")
+                    .WithFlag(2, name: "REF_CAL_START")
+                    .WithReservedBits(3, 13)
                 },
-
+                {(long)Registers.ClkRefCnt, new WordRegister(this, 0x0)
+                    .WithValueField(0, 16, name: "REF_CNT_VAL", mode: FieldMode.Read)
+                },
+                {(long)Registers.ClkRefValL, new WordRegister(this, 59580)
+                    .WithValueField(0, 16, name: "XTAL_CNT_VAL", mode: FieldMode.Read)
+                },
+                {(long)Registers.ClkRefValH, new WordRegister(this, 0x0)
+                    .WithValueField(0, 16, name: "XTAL_CNT_VAL", mode: FieldMode.Read)
+                },
             };
 
             registers = new WordRegisterCollection(this, registersMap);
@@ -263,54 +132,31 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         public void Reset()
         {
-            IRQ.Unset();
             registers.Reset();
         }
 
-        public GPIO IRQ { get; }
-
-        public long Size => 0x6B;
+        public long Size => 0x6A;
 
         private readonly WordRegisterCollection registers;
 
-        private SysClkSel ClockSelection { get; set; }
-
-        private bool BleSleep = true;
-        private bool RadioSleep = true;
-        private bool PeriphSleep = true;
-
-        private enum SysClkSel
-        {
-            XTAL16M = 0,
-            RC16M = 1,
-            LowPower = 2,
-            Pll96Mhz = 3
-        }
-
         private enum Registers
         {
-            ClkAmba = 0x0,
-            ClkFreqTrim = 0x2,
-            ClkRadio = 0x8,
-            ClkCtrl = 0xA,
-            ClkTmr = 0xC,
-            PmuCtrl = 0x10,
-            SysCtrl = 0x12,
-            SysStat = 0x14,
-            Clk32K = 0x20,
-            Clk16M = 0x22,
-            ClkRCX20K = 0x24,
-            BandGap = 0x28,
-            AnalogStatus = 0x2A,
-            BodCtrl = 0x34,
-            BodCtrl2 = 0x36,
-            LdoCtrl1 = 0x3A,
-            LdoCtrl2 = 0x3C,
-            SleepTimer = 0x3E,
-            XtalRdyCtrl = 0x50,
-            XtalRdyStat = 0x52,
-            Xtal16MCtrl = 0x56,
-            AonSpare = 0x64,
+            AnaTest = 0x2,
+            Ctrl1 = 0x8,
+            Ctrl2 = 0xA,
+            Status = 0xC,
+            SocCtrl1 = 0x40,
+            SocCtrl2 = 0x42,
+            SocCtrl3 = 0x44,
+            ChargeCtr1 = 0x48,
+            ChargeCtr2 = 0x4A,
+            ChargeCtr3 = 0x4C,
+            SocChargeAvg = 0x50,
+            SocStatus = 0x52,
+            ClkRefSel = 0x60,
+            ClkRefCnt = 0x62,
+            ClkRefValL = 0x64,
+            ClkRefValH = 0x66,
         }
     }
 }

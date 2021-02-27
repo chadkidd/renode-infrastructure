@@ -14,22 +14,27 @@ using Antmicro.Renode.Peripherals.Bus;
 namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
     [AllowedTranslations(AllowedTranslation.ByteToWord | AllowedTranslation.WordToDoubleWord | AllowedTranslation.ByteToDoubleWord)]
-    public sealed class DA1468x_OTPC : IDoubleWordPeripheral, IKnownSize
+    public sealed class DA1468x_RFCU : IDoubleWordPeripheral, IKnownSize
     {
-        public DA1468x_OTPC(Machine machine)
+        public DA1468x_RFCU(Machine machine)
         {
             var registersMap = new Dictionary<long, DoubleWordRegister>
             {
-                {(long)Registers.Mode, new DoubleWordRegister(this, 0x0)
-                    .WithValueField(0, 3, name: "OTPC_MODE_MODE")
-                    .WithReservedBits(3, 1)
-                    .WithTaggedFlag("OTPC_MODE_USE_DMA", 4)
-                    .WithTaggedFlag("OTPC_MODE_FIFO_FLUSH", 5)
-                    .WithTaggedFlag("OTPC_MODE_ERR_RESP_DIS", 6)
-                    .WithReservedBits(7, 1)
-                    .WithTaggedFlag("OTPC_MODE_USE_SP_ROWS", 8)
-                    .WithTaggedFlag("OTPC_MODE_RLD_RR_REQ", 9)
-                    .WithReservedBits(10, 21)
+                {(long)Registers.RfCalCtrl, new DoubleWordRegister(this, 0x0)
+                    .WithFlag(0, name: "SO_CAL",
+                        valueProviderCallback: (_) => {
+                            startOfCal = !startOfCal;
+                            return !startOfCal;  
+                        },
+                        writeCallback: (_, value) => {
+                            startOfCal = value;
+                        })
+                    .WithFlag(1, name: "EO_CAL")
+                    .WithTaggedFlag("MGAIN_CAL_DIS", 2)
+                    .WithTaggedFlag("IFF_CAL_DIS", 3)
+                    .WithTaggedFlag("DC_OFFSET_CAL_DIS", 4)
+                    .WithTaggedFlag("VCO_CAL_DIS", 5)
+                    .WithReservedBits(6, 10)
                 },
                 
             };
@@ -52,14 +57,15 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             registers.Reset();
         }
 
-        public long Size => 0x30;
+        public long Size => 0xF0;
 
         private readonly DoubleWordRegisterCollection registers;
 
+        private bool startOfCal;
 
         private enum Registers
         {
-            Mode = 0x0,
+            RfCalCtrl= 0x50,
         }
     }
 }

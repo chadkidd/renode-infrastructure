@@ -11,82 +11,56 @@ using Antmicro.Renode.Core;
 using Antmicro.Renode.Core.Structure.Registers;
 using Antmicro.Renode.Peripherals.Bus;
 
-namespace Antmicro.Renode.Peripherals.Miscellaneous
+namespace Antmicro.Renode.Peripherals.USB
 {
     [AllowedTranslations(AllowedTranslation.ByteToWord | AllowedTranslation.DoubleWordToWord)]
-    public sealed class DA1468x_WKUP : IWordPeripheral, IKnownSize
+    public sealed class DA1468x_USB : IWordPeripheral, IKnownSize
     {
-        public DA1468x_WKUP(Machine machine)
+        public DA1468x_USB(Machine machine)
         {
-            IRQ = new GPIO();
             var registersMap = new Dictionary<long, WordRegister>
             {
-                {(long)Registers.Ctrl, new WordRegister(this, 0x0)
-                    .WithValueField(0, 5, name: "WKUP_DEB_VALUE")
-                    .WithTaggedFlag("WKUP_SFT_KEYHIT", 6)
-                    .WithFlag(7, name: "WKUP_ENABLE_IRQ", writeCallback: (_, value) => irqEnable = value)
-                    .WithReservedBits(8, 8)
+                {(long)Registers.MainCtrl, new WordRegister(this, 0x0)
+                    .WithFlag(0, name: "USBEN")
+                    .WithFlag(1, name: "USB_DBG")
+                    .WithReservedBits(2, 1)
+                    .WithFlag(3, name: "USB_NAT")
+                    .WithFlag(4, name: "LSMODE")
+                    .WithReservedBits(5, 11)
                 },
-                {(long)Registers.Compare, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "COMPARE")
-                    .WithReservedBits(8, 8)
+                 {(long)Registers.MainMask, new WordRegister(this, 0x0)
+                    .WithFlag(0, name: "USB_M_WARN")
+                    .WithFlag(1, name: "USB_M_ALT")
+                    .WithFlag(2, name: "USB_M_TX_EV")
+                    .WithFlag(3, name: "USB_M_FRAME")
+                    .WithFlag(4, name: "USB_M_NAK")
+                    .WithFlag(5, name: "USB_M_ULD")
+                    .WithFlag(6, name: "USB_M_RX_EV")
+                    .WithFlag(7, name: "USB_M_INTR")
+                    .WithFlag(8, name: "USB_M_EP0_TX")
+                    .WithFlag(9, name: "USB_M_EP0_RX")
+                    .WithFlag(10, name: "USB_M_EP0_NAK")
+                    .WithFlag(11, name: "USB_M_CH_EV")
+
+                    .WithReservedBits(12, 4)
                 },
-                {(long)Registers.ResetIrq, new WordRegister(this, 0x0)
-                    .WithValueField(0, 16, name: "WKUP_IRQ_RESET", mode: FieldMode.Write, writeCallback: (_, value) =>
-                    {
-                        eventsCounter = 0;
-                        irqEnable = false;
-                    })
+                {(long)Registers.ChargerCtrl, new WordRegister(this, 0x0)
+                    .WithFlag(0, name: "USB_CHARGE_ON")
+                    .WithFlag(1, name: "IDP_SRC_ON")
+                    .WithFlag(2, name: "VDP_SRC_ON")
+                    .WithFlag(3, name: "VDM_SRC_ON")
+                    .WithFlag(4, name: "IDP_SNK_ON")
+                    .WithFlag(5, name: "IDM_SNK_ON")
+                    .WithReservedBits(6, 10)
                 },
-                {(long)Registers.Counter, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "EVENT_VALUE", mode: FieldMode.Read, valueProviderCallback: (_) => eventsCounter)
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.ResetCounter, new WordRegister(this, 0x0)
-                    .WithValueField(0, 15, name: "WKUP_CNTR_RST", mode: FieldMode.Write, writeCallback: (_, value) =>
-                    {
-                        eventsCounter = 0;
-                    })
-                },
-                {(long)Registers.SelectP0, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_SELECT_P0")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.SelectP1, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_SELECT_P1")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.SelectP2, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_SELECT_P2")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.SelectP3, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_SELECT_P3")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.SelectP4, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_SELECT_P4")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.PolarityP0, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_POL_P0")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.PolarityP1, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_POL_P1")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.PolarityP2, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_POL_P2")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.PolarityP3, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_POL_P3")
-                    .WithReservedBits(8, 8)
-                },
-                {(long)Registers.PolarityP4, new WordRegister(this, 0x0)
-                    .WithValueField(0, 8, name: "WKUP_POL_P4")
-                    .WithReservedBits(8, 8)
+                {(long)Registers.ChargerStat, new WordRegister(this, 0x0)
+                    .WithFlag(0, name: "USB_DCP_DET")
+                    .WithFlag(1, name: "USB_CHG_DET")
+                    .WithFlag(2, name: "USB_DP_VAL")
+                    .WithFlag(3, name: "USB_DM_VAL")
+                    .WithFlag(4, name: "USB_DP_VAL2")
+                    .WithFlag(5, name: "USB_DM_VAL2")
+                    .WithReservedBits(6, 10)
                 },
 
             };
@@ -106,35 +80,19 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         public void Reset()
         {
-            IRQ.Unset();
             registers.Reset();
         }
 
-        public GPIO IRQ { get; }
-
-        public long Size => 0x1E;
+        public long Size => 0xD8;
 
         private readonly WordRegisterCollection registers;
-        private bool irqEnable;
-        private uint eventsCounter = 0;
 
         private enum Registers
         {
-            Ctrl = 0x0,
-            Compare = 0x2,
-            ResetIrq = 0x4,
-            Counter = 0x6,
-            ResetCounter = 0x8,
-            SelectP0 = 0xA,
-            SelectP1 = 0xC,
-            SelectP2 = 0xE,
-            SelectP3 = 0x10,
-            SelectP4 = 0x12,
-            PolarityP0 = 0x14,
-            PolarityP1 = 0x16,
-            PolarityP2 = 0x18,
-            PolarityP3 = 0x1A,
-            PolarityP4 = 0x1C,
+            MainCtrl = 0x0,
+            MainMask = 0xE,
+            ChargerCtrl = 0xD4,
+            ChargerStat = 0xD6,
         }
     }
 }
