@@ -1,12 +1,13 @@
 //
-// Copyright (c) 2010-2018 Antmicro
+// Copyright (c) 2010-2021 Antmicro
 // Copyright (c) 2011-2015 Realtime Embedded
 //
 // This file is licensed under the MIT License.
 // Full license text is available in 'licenses/MIT.txt'.
 //
-using Antmicro.Renode.Core;
 using System;
+using Antmicro.Renode.Core;
+using Antmicro.Renode.Time;
 
 namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
@@ -35,14 +36,14 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         public void Press()
         {
-            IRQ.Set(!Inverted);
+            SetGPIO(!Inverted);
             Pressed = true;
             OnStateChange(true);
         }
 
         public void Release()
         {
-            IRQ.Set(Inverted);
+            SetGPIO(Inverted);
             Pressed = false;
             OnStateChange(false);
         }
@@ -59,6 +60,14 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             }
         }
 
+        public GPIO IRQ { get; }
+
+        public event Action<bool> StateChanged;
+
+        public bool Pressed { get; private set; }
+
+        public bool Inverted { get; private set; }
+
         private void OnStateChange(bool pressed)
         {
             var sc = StateChanged;
@@ -68,13 +77,22 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             }
         }
 
-        public GPIO IRQ { get; private set; }
+        private void SetGPIO(bool value)
+        {
+            if(!this.TryGetMachine(out var machine))
+            {
+                // can happen during button creation
+                IRQ.Set(value);
+                return;
+            }
+            if(!TimeDomainsManager.Instance.TryGetVirtualTimeStamp(out var vts))
+            {
+                // this is almost always the case, but maybe someday we'll be able to press the
+                // button by a machine-controlled actuator
+                vts = new TimeStamp(default(TimeInterval), EmulationManager.ExternalWorld);
+            }
 
-        public event Action<bool> StateChanged;
-
-        public bool Pressed { get; private set; }
-
-        public bool Inverted { get; private set; }
+            machine.HandleTimeDomainEvent(IRQ.Set, value, vts);
+        }
     }
 }
-

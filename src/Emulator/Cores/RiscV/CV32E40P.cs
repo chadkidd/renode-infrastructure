@@ -1,5 +1,5 @@
 ﻿//
-// Copyright (c) 2010-2020 Antmicro
+// Copyright (c) 2010-2021 Antmicro
 //
 //  This file is licensed under the MIT License.
 //  Full license text is available in 'licenses/MIT.txt'.
@@ -15,21 +15,21 @@ namespace Antmicro.Renode.Peripherals.CPU
     public class CV32E40P : RiscV32
     {
         public CV32E40P(Machine machine, IRiscVTimeProvider timeProvider = null, uint hartId = 0, PrivilegeArchitecture privilegeArchitecture = PrivilegeArchitecture.Priv1_11, Endianess endianness = Endianess.LittleEndian, string cpuType = "rv32imfc")
-            : base(null, cpuType, machine, hartId, privilegeArchitecture, endianness)
+            : base(null, cpuType, machine, hartId, privilegeArchitecture, endianness, allowUnalignedAccesses : true)
         {
             // enable all interrupt sources
             MIE = 0xffffffff;
 
-            RegisterCSR((ulong)CustomCSR.PerformanceCounterMode, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.StackCheckEnable, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.StackBase, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.StackEnd, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.HardwareLoop0Start, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.HardwareLoop0End, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.HardwareLoop0Counter, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.HardwareLoop1Start, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.HardwareLoop1End, () => 0u, _ => { });
-            RegisterCSR((ulong)CustomCSR.HardwareLoop1Counter, () => 0u, _ => { });
+            RegisterCSR((ulong)CustomCSR.PerformanceCounterMode, () => LogUnhandledCSRRead("PerformanceCounterMode"), val => LogUnhandledCSRWrite("PerformanceCounterMode", val));
+            RegisterCSR((ulong)CustomCSR.StackCheckEnable      , () => LogUnhandledCSRRead("StackCheckEnable")      , val => LogUnhandledCSRWrite("StackCheckEnable", val));
+            RegisterCSR((ulong)CustomCSR.StackBase             , () => LogUnhandledCSRRead("StackBase")             , val => LogUnhandledCSRWrite("StackBase", val));
+            RegisterCSR((ulong)CustomCSR.StackEnd              , () => LogUnhandledCSRRead("StackEnd")              , val => LogUnhandledCSRWrite("StackEnd", val));
+            RegisterCSR((ulong)CustomCSR.HardwareLoop0Start    , () => LogUnhandledCSRRead("HardwareLoop0Start")    , val => LogUnhandledCSRWrite("HardwareLoop0Start", val));
+            RegisterCSR((ulong)CustomCSR.HardwareLoop0End      , () => LogUnhandledCSRRead("HardwareLoop0End")      , val => LogUnhandledCSRWrite("HardwareLoop0End", val));
+            RegisterCSR((ulong)CustomCSR.HardwareLoop0Counter  , () => LogUnhandledCSRRead("HardwareLoop0Counter")  , val => LogUnhandledCSRWrite("HardwareLoop0Counter", val));
+            RegisterCSR((ulong)CustomCSR.HardwareLoop1Start    , () => LogUnhandledCSRRead("HardwareLoop1Start")    , val => LogUnhandledCSRWrite("HardwareLoop1Start", val));
+            RegisterCSR((ulong)CustomCSR.HardwareLoop1End      , () => LogUnhandledCSRRead("HardwareLoop1End")      , val => LogUnhandledCSRWrite("HardwareLoop1End", val));
+            RegisterCSR((ulong)CustomCSR.HardwareLoop1Counter  , () => LogUnhandledCSRRead("HardwareLoop1Counter")  , val => LogUnhandledCSRWrite("HardwareLoop1Counter", val));
 
             InstallCustomInstruction(pattern: "FFFFFFFFFFFFBBBBB000DDDDD0001011", handler: opcode => LoadRegisterImmediate(opcode, Width.Byte, BitExtension.Sign, "p.lb rD, Imm(rs1!)"));
             InstallCustomInstruction(pattern: "FFFFFFFFFFFFBBBBB100DDDDD0001011", handler: opcode => LoadRegisterImmediate(opcode, Width.Byte, BitExtension.Zero, "p.lbu rD, Imm(rs1!)"));
@@ -75,8 +75,8 @@ namespace Antmicro.Renode.Peripherals.CPU
             InstallCustomInstruction(pattern: "1000000LLLLLSSSSS100DDDDD0110011", handler: opcode => ManipulateBitsInRegister(opcode, Source.Register, Operation.Set, Width.Word, Sign.Unsigned, "p.bsetr rD, rs1, rs2"));
             InstallCustomInstruction(pattern: "JJJJJJJIIIIISSSSS010JJJJJ1100011", handler: opcode => BranchIf(opcode, Equality.Equal, "p.beqimm rs1, Imm5, Imm12"));
             InstallCustomInstruction(pattern: "JJJJJJJIIIIISSSSS011JJJJJ1100011", handler: opcode => BranchIf(opcode, Equality.NotEqual, "p.bneimm rs1, Imm5, Imm12"));
-            InstallCustomInstruction(pattern: "0100001----------001-----0110011", handler: _ => LogUnsupported("p.msu rD, rs1, rs2"));
-            InstallCustomInstruction(pattern: "0100001----------000-----0110011", handler: _ => LogUnsupported("p.mac rD, rs1, rs2"));
+            InstallCustomInstruction(pattern: "0100001RRRRRSSSSS001DDDDD0110011", handler: opcode => MultiplyAccumulate(opcode, operationAdd: false, log: "p.msu rD, rs1, rs2"));
+            InstallCustomInstruction(pattern: "0100001RRRRRSSSSS000DDDDD0110011", handler: opcode => MultiplyAccumulate(opcode, operationAdd: true, log: "p.mac rD, rs1, rs2"));
             InstallCustomInstruction(pattern: "00---------------001-----1011011", handler: _ => LogUnsupported("p.macuN rD, rs1, rs2, Is3"));
             InstallCustomInstruction(pattern: "00---------------110-----1011011", handler: _ => LogUnsupported("p.mac.zh.zl"));
             InstallCustomInstruction(pattern: "00---------------100-----1011011", handler: _ => LogUnsupported("p.mac.zl.zl"));
@@ -97,6 +97,36 @@ namespace Antmicro.Renode.Peripherals.CPU
             InstallCustomInstruction(pattern: "11---------------000-----1011011", handler: _ => LogUnsupported("p.mulhhsN rD, rs1, rs2, Is3"));
             InstallCustomInstruction(pattern: "000100000000-----001-----0110011", handler: _ => LogUnsupported("p.fl1 rD, rs1"));
             InstallCustomInstruction(pattern: "-----------------110-----0000011", handler: _ => LogUnsupported("p.elw"));
+        }
+
+        private ulong LogUnhandledCSRRead(string name)
+        {
+            this.Log(LogLevel.Error, "Reading from an unsupported CSR {0}", name);
+            return 0u;
+        }
+
+        private void LogUnhandledCSRWrite(string name, ulong value)
+        {
+            this.Log(LogLevel.Error, "Writing to an unsupported CSR {0} value: 0x{1:X}", name, value);
+        }
+
+        private void MultiplyAccumulate(ulong opcode, bool operationAdd, string log)
+        {
+            this.Log(LogLevel.Noisy, "({0}) at PC={1:X}", log, PC.RawValue);
+
+            var rD = (int)BitHelper.GetValue(opcode, 7, 5);
+            var rs1 = (int)BitHelper.GetValue(opcode, 15, 5);
+            var rs2 = (int)BitHelper.GetValue(opcode, 20, 5);
+
+            var rDValue = (long)GetRegisterUnsafe(rD).RawValue;
+            var rs1Value = (long)GetRegisterUnsafe(rs1).RawValue;
+            var rs2Value = (long)GetRegisterUnsafe(rs2).RawValue;
+
+            var result = (ulong)(operationAdd
+                ? rDValue + rs1Value * rs2Value
+                : rDValue - rs1Value * rs2Value);
+
+            SetRegisterUnsafe(rD, result);
         }
 
         private void LoadRegisterImmediate(ulong opcode, Width width, BitExtension extension, string log)
@@ -263,8 +293,8 @@ namespace Antmicro.Renode.Peripherals.CPU
             var imm5 = (int)BitHelper.SignExtend((uint)BitHelper.GetValue(opcode, 20, 5), 5);
             if((equality == Equality.NotEqual && rs1Value != imm5) || (equality == Equality.Equal && rs1Value == imm5))
             {
-                var imm12 = (BitHelper.GetValue(opcode, 31, 1) << 11) | (BitHelper.GetValue(opcode, 7, 1) << 10) | (BitHelper.GetValue(opcode, 25, 6) << 4) | BitHelper.GetValue(opcode, 8, 4);
-                var newPC = GetRegisterUnsafe((int)RiscV32Registers.PC).RawValue + (imm12 << 1);
+                var imm12 = (int)BitHelper.SignExtend((uint)((BitHelper.GetValue(opcode, 31, 1) << 11) | (BitHelper.GetValue(opcode, 7, 1) << 10) | (BitHelper.GetValue(opcode, 25, 6) << 4) | BitHelper.GetValue(opcode, 8, 4)), 12);
+                var newPC = (uint)((uint)GetRegisterUnsafe((int)RiscV32Registers.PC).RawValue + (imm12 << 1));
                 PC = newPC;
             }
         }

@@ -14,6 +14,7 @@ using Antmicro.Migrant;
 using System.Threading;
 using Antmicro.Renode.Time;
 using Antmicro.Renode.Core;
+using Antmicro.Migrant.Hooks;
 
 namespace Antmicro.Renode.Peripherals.UART
 {
@@ -102,11 +103,21 @@ namespace Antmicro.Renode.Peripherals.UART
             }
         }
 
+        [PostDeserializationAttribute]
+        private void ReAttach()
+        {
+            if(UART != null)
+            {
+                Attach(UART);
+            }
+        }
+
         [Transient]
         private IOProvider io;
+        [Constructor]
         private Dictionary<IOProvider, Action<byte>> actionsDictionary;
         private readonly CircularBuffer<byte> history;
-        private object lockObject= new object();
+        private object lockObject = new object();
 
         private const int BUFFER_SIZE = 100000;
     }
