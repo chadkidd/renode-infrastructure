@@ -1,0 +1,549 @@
+//
+// Copyright (c) 2010-2018 Antmicro
+// Copyright (c) 2011-2015 Realtime Embedded
+//
+// This file is licensed under the MIT License.
+// Full license text is available in 'licenses/MIT.txt'.
+//
+using System;
+using Antmicro.Renode.Core;
+using Antmicro.Renode.Logging;
+using Antmicro.Renode.Peripherals.Bus;
+using System.Collections.Generic;
+using Antmicro.Migrant;
+
+namespace Antmicro.Renode.Peripherals.UART
+{
+    [AllowedTranslations(AllowedTranslation.ByteToWord)]
+    public class DA1468x_UART :  IBytePeripheral, IWordPeripheral, IUART, IKnownSize
+    {
+        public DA1468x_UART()
+        {
+            IRQ = new GPIO();
+            Reset();
+        }
+
+        public GPIO IRQ { get; private set; }
+
+        public long Size
+        {
+            get
+            {
+                return 0x200;
+            }
+        }
+
+        public void WriteChar(byte value)
+        {
+            lock(UARTLock)
+            {
+                if((fifoControl & FifoControl.Enable) != 0 || true)     //HACK : fifo always enabled
+                {
+                    recvFifo.Enqueue(value);
+                    lineStatus |= LineStatus.DataReady;
+                }
+                else
+                {
+                    if((lineStatus & LineStatus.DataReady) != 0)
+                    {
+                        lineStatus |= LineStatus.OverrunErrorIndicator;
+                    }
+                    receiverBuffer = value;
+                    lineStatus |= LineStatus.DataReady;
+                }
+                Update();
+            }
+        }
+
+        public void WriteByte(long offset, byte value)
+        {
+            var originalOffset = offset;
+            lock(UARTLock)
+            {
+                if((lineControl & LineControl.DivisorLatchAccess) != 0)
+                {
+                    switch((Register)offset)
+                    {
+                    case Register.DivisorLatchL:
+                        divider = (ushort)((divider & 0xff00) | value);
+                        return;
+
+                    case Register.DivisorLatchH:
+                        divider = (ushort)((divider & 0x00ff) | (value << 8));
+                        return;
+                    }
+                }
+
+                switch((Register)offset)
+                {
+                case Register.ReceiveTransmitBuffer:
+                    var handler = CharReceived;
+                    if(handler != null)
+                    {
+                        handler((byte)(value & 0xFF));
+                    }
+
+                    transmitNotPending = 0;
+                    lineStatus &= ~LineStatus.TransmitHoldEmpty;
+                    if((fifoControl & FifoControl.IsEnabled) != 0)
+                    {
+                        lineStatus &= ~LineStatus.TransmitterEmpty;
+                    }
+                    Update();
+
+                    if((fifoControl & FifoControl.IsEnabled) == 0 || (interruptEnable & InterruptEnableLevel.ProgrammableTransmitHoldEmptyInterruptMode) == 0)
+                    {
+                        lineStatus |= LineStatus.TransmitHoldEmpty;
+                    }
+                    lineStatus |= LineStatus.TransmitterEmpty;
+                    transmitNotPending = 1;
+                    Update();
+                    break;
+
+               case Register.InterruptEnable:
+               case Register.Uart2_InterruptEnable:
+                    interruptEnable = (InterruptEnableLevel)value;
+                    if((fifoControl & FifoControl.IsEnabled) != 0 && (interruptEnable & InterruptEnableLevel.ProgrammableTransmitHoldEmptyInterruptMode) != 0)
+                    {
+                        lineStatus &= ~LineStatus.TransmitHoldEmpty;
+                    }
+
+                    if((lineStatus & LineStatus.TransmitHoldEmpty) != 0)
+                    {
+                        transmitNotPending = 1;
+                        Update();
+                    }
+                    break;
+
+                case Register.FIFOControl:
+                    var val = (FifoControl)value;
+                    if(fifoControl == val)
+                    {
+                        break;
+                    }
+                    /* Did the enable/disable flag change? If so, make sure FIFOs get flushed */
+                    if(((val ^ fifoControl) & FifoControl.Enable) != 0)
+                    {
+                        val |= (FifoControl.TransmitReset | FifoControl.ReceiveReset);
+                    }
+
+                    /* FIFO clear */
+                    if((val & FifoControl.ReceiveReset) != 0)
+                    {
+                        recvFifo.Clear();
+
+                    }
+                    if((val & FifoControl.TransmitReset) != 0)
+                    {
+                        //clear xmit
+                    }
+
+                    if((val & FifoControl.Enable) != 0)
+                    {
+                        interruptIdentification |= (InterruptLevel)FifoControl.IsEnabled;
+                        /* Set RECV_FIFO trigger Level */
+                        switch(val & (FifoControl)0XC0)
+                        {
+                        case FifoControl.IrqTriggerLevel1:
+                            interruptTriggerLevel = 1;
+                            break;
+                        case FifoControl.IrqTriggerLevel2:
+                            interruptTriggerLevel = 4;
+                            break;
+                        case FifoControl.IrqTriggerLevel3:
+                            interruptTriggerLevel = 8;
+                            break;
+                        case FifoControl.IrqTriggerLevel4:
+                            interruptTriggerLevel = 14;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        interruptIdentification &= (InterruptLevel)unchecked((byte)(~FifoControl.IsEnabled));
+                    }
+                    /* Set fifoControl - or at least the bits in it that are supposed to "stick" */
+                    fifoControl = (val & (FifoControl)0xC9);
+                    Update();
+                    break;
+
+                case Register.LineControl:
+                    lineControl = (LineControl)value;
+                    break;
+
+                case Register.ModemControl:
+                    modemControl = (ModemControl)(value & 0x1F);
+                    break;
+
+                case Register.LineStatus:
+                    break;
+
+                case Register.Scratchpad:
+                    scratchRegister = value;
+                    break;
+
+                case Register.FractionalDivisor:
+                    fractionalDivisor = value;
+                    break;
+
+                default:
+                this.LogUnhandledWrite(originalOffset, value);
+                break;
+                }
+
+            }
+        }
+
+        public byte ReadByte(long offset)
+        {
+            var originalOffset = offset;
+            lock(UARTLock)
+            {
+                byte value = 0x0;
+                if((lineControl & LineControl.DivisorLatchAccess) != 0)
+                {
+                    switch((Register)offset)
+                    {
+                    case Register.DivisorLatchL:
+                        value = (byte)(divider & 0xFF);
+                        goto ret;
+
+                    case Register.DivisorLatchH:
+                        value = (byte)((divider >> 8) & 0xFF);
+                        goto ret;
+                    }
+                }
+                else
+                {
+                    switch((Register)offset)
+                    {
+                    case Register.ReceiveTransmitBuffer:
+                        if((fifoControl & FifoControl.Enable) != 0 || true /*HACK*/)
+                        {
+                            if(recvFifo.Count > 0)
+                            {
+                                value = recvFifo.Dequeue();
+                            }
+                            else
+                            {
+                                value = 0;
+                            }
+                            if(recvFifo.Count == 0)
+                            {
+                                lineStatus &= ~(LineStatus.DataReady | LineStatus.BreakIrqIndicator);
+                            }
+                        }
+                        else
+                        {
+                            value = receiverBuffer;
+                            lineStatus &= ~(LineStatus.DataReady | LineStatus.BreakIrqIndicator);
+                        }
+                        Update();
+                        if((modemControl & ModemControl.Loopback) == 0)
+                        {
+                            /* in loopback mode, don't receive any data */
+                        }
+
+                        break;
+
+                    case Register.InterruptEnable:
+                    case Register.Uart2_InterruptEnable:
+                        value = (byte)interruptEnable;
+                        break;
+
+                    case Register.InterruptIdentification:
+                        value = (byte)interruptIdentification;
+                        if((value & MaskInterruptId) == (byte)InterruptLevel.TransmitterHoldingRegEmpty)
+                        {
+                            transmitNotPending = 0;
+                            Update();
+                        }
+                        break;
+
+                    case Register.LineControl:
+                        value = (byte)lineControl;
+                        break;
+
+                    case Register.ModemControl:
+                        //this.DebugLog("modem control read");
+                        value = (byte)modemControl;
+                        break;
+
+                    case Register.LineStatus:
+                        value = (byte)lineStatus;
+                        if((lineStatus & (LineStatus.BreakIrqIndicator | LineStatus.OverrunErrorIndicator)) != 0)
+                        {
+                            lineStatus &= ~(LineStatus.BreakIrqIndicator | LineStatus.OverrunErrorIndicator);
+                            Update();
+                        }
+                        lineStatus &= ~(LineStatus.OverrunErrorIndicator | LineStatus.ParityErrorIndicator | LineStatus.FrameErrorIndicator | LineStatus.BreakIrqIndicator | LineStatus.ReceiverFIFOError);
+                        break;
+
+                    case Register.Scratchpad:
+                        value = scratchRegister;
+                        break;
+
+                    case Register.UartBusy:
+                        value = 0;
+                        break;
+
+                    case Register.FractionalDivisor:
+                        value = fractionalDivisor;
+                        break;
+
+                    default:
+                    this.LogUnhandledRead(originalOffset);
+                    break;
+                    }
+                }
+                ret:
+                return value;
+            }
+        }
+
+        public void Reset()
+        {
+            lock(UARTLock)
+            {
+                receiverBuffer = 0;
+                interruptEnable = 0;
+                interruptIdentification = InterruptLevel.NoInterruptsPending;
+                lineControl = 0;
+                lineStatus = LineStatus.TransmitterEmpty | LineStatus.TransmitHoldEmpty;
+                modemStatus = ModemStatus.DataCarrierDetect | ModemStatus.DataSetReady | ModemStatus.ClearToSend;
+                divider = 0x0C;
+                modemControl = ModemControl.ForceDataCarrierDetect;
+                scratchRegister = 0;
+                transmitNotPending = 0;
+            }
+        }
+
+        public ushort ReadWord(long offset)
+        {
+            return (ushort)ReadByte(offset);
+        }
+
+        public void WriteWord(long offset, ushort value)
+        {
+            WriteByte(offset, (byte)(value & 0xFF));
+        }
+
+        private void Update()
+        {
+            var interruptId = InterruptLevel.NoInterruptsPending;
+            if(((interruptEnable & InterruptEnableLevel.ReceiverLineStatus) != 0) && ((lineStatus & LineStatus.InterruptAny) != 0))
+            {
+                interruptId = InterruptLevel.ReceiverLineStatusIrq;
+            }
+            else if(((interruptEnable & InterruptEnableLevel.ReceiverData) != 0) && ((lineStatus & LineStatus.DataReady) != 0) && (((fifoControl & FifoControl.Enable) == 0) || true /* HACK */ || recvFifo.Count > interruptTriggerLevel))
+            {
+                interruptId = InterruptLevel.ReceiverDataIrq;
+            }
+            else if(((interruptEnable & InterruptEnableLevel.TransmitterHoldingReg) != 0) && (transmitNotPending != 0))
+            {
+                interruptId = InterruptLevel.TransmitterHoldingRegEmpty;
+            }
+            else if(((interruptEnable & InterruptEnableLevel.ModemStatus) != 0) && ((modemStatus & ModemStatus.AnyDelta) != 0))
+            {
+                interruptId = InterruptLevel.ModemStatusIrq;
+            }
+
+            interruptIdentification = interruptId | (interruptIdentification & (InterruptLevel)0xF0);
+
+            if(interruptId != InterruptLevel.NoInterruptsPending)
+            {
+                this.NoisyLog("IRQ true");
+                IRQ.Set(true);
+            }
+            else
+            {
+                this.NoisyLog("IRQ false");
+                IRQ.Set(false);
+            }
+        }
+
+        [field: Transient]
+        public event Action<byte> CharReceived;
+
+        private Queue<byte> recvFifo = new Queue<byte>();
+        private object UARTLock = new object();
+
+        private InterruptEnableLevel interruptEnable;
+        private InterruptLevel interruptIdentification;
+        /* read only */
+        private LineControl lineControl;
+        private ModemControl modemControl;
+        private LineStatus lineStatus;
+        /* read only */
+        private ModemStatus modemStatus;
+        /* read only */
+        private FifoControl fifoControl;
+        private byte scratchRegister;
+
+        private byte interruptTriggerLevel;
+        private ushort divider;
+        private byte prescaler;
+        private byte receiverBuffer;
+        /* receive register */
+        private int transmitNotPending;
+        private byte fractionalDivisor = 0;
+        private const byte MaskInterruptId = 0x06;
+        /* Mask for the interrupt ID */
+
+
+        private enum Register:uint
+        {
+            //Receive buffer and Transmit Holding register are the same register
+            ReceiveTransmitBuffer = 0x0,
+            // DivisorLatchL is the same as ReceiveTransmitBuffer but accessible only when DLAB bit is set
+            DivisorLatchL = 0x0,
+            InterruptEnable = 0x4,
+            // DivisorLatchH is the same as Interrupt enable but accessible only when DLAB bit is set
+            DivisorLatchH = 0x4,
+            // InterruptIdentification = Read only and FifoControl = Write only
+            InterruptIdentification = 0x8,
+            FIFOControl = 0x8,
+            LineControl = 0xC,
+            ModemControl = 0x10,
+            LineStatus = 0x14,
+            Scratchpad = 0x1C,
+            UartBusy = 0x7C,
+            FractionalDivisor = 0xC0,
+            Uart2_InterruptEnable = 0x104,
+        }
+
+        [Flags]
+        private enum LineControl : byte
+        {
+            DivisorLatchAccess = 0x80,
+            ParityEnable = 0x08,
+            EvenParity = 0x10,
+            ForceParity = 0x20,
+            StopBits = 0x04,
+            WordLengthH = 0x02,
+            WordLengthL = 0x01
+        }
+
+        /*
+         * Interrupt trigger levels. The byte-counts are for 16550A - in newer UARTs the byte-count for each ITL is higher.
+         */
+        [Flags]
+        private enum InterruptLevel : byte
+        {
+            NoInterruptsPending = 0x01,
+            TransmitterHoldingRegEmpty = 0x02,
+            ReceiverDataIrq = 0x04,
+            ReceiverLineStatusIrq = 0x06,
+            CharacterTimeoutIndication = 0x0C,
+            /*not used at the moment*/
+            ModemStatusIrq = 0x00
+            /* "Other" irq - NoInterrupts is disabled, but no other bit is enabled, so check in another register */
+        }
+
+        [Flags]
+        private enum InterruptEnableLevel : byte
+        {
+            ProgrammableTransmitHoldEmptyInterruptMode = 0x80,
+            ModemStatus = 0x08,
+            ReceiverLineStatus = 0x04,
+            TransmitterHoldingReg = 0x02,
+            ReceiverData = 0x01
+        }
+
+        [Flags]
+        private enum ModemControl : byte
+        {
+            Loopback = 0x10,
+            ForceDataCarrierDetect = 0x08,
+            ForceRingIndicator = 0x04,
+            ForceRequestToSend = 0x02,
+            ForceDataTerminalReady = 0x01
+
+        }
+
+        [Flags]
+        private enum ModemStatus : byte
+        {
+            DataCarrierDetect = 0x80,
+            RingIndicator = 0x40,
+            DataSetReady = 0x20,
+            ClearToSend = 0x10,
+            DeltaDataCarrierDetect = 0x08,
+            TrailingEdgeRingIndicator = 0x04,
+            DeltaDataSetReady = 0x02,
+            DeltaClearToSend = 0x01,
+            AnyDelta = 0x0F
+        }
+
+        [Flags]
+        private enum LineStatus : byte
+        {
+            ReceiverFIFOError = 0x80,
+            TransmitterEmpty = 0x40,
+            TransmitHoldEmpty = 0x20,
+            BreakIrqIndicator = 0x10,
+            FrameErrorIndicator = 0x08,
+            ParityErrorIndicator = 0x04,
+            OverrunErrorIndicator = 0x02,
+            DataReady = 0x01,
+            InterruptAny = 0x1E
+        }
+
+        [Flags]
+        private enum FifoControl : byte
+        {
+            Enable = 0x01,
+            ReceiveReset = 0x02,
+            TransmitReset = 0x04,
+            DMAModeSelect = 0x08,
+
+            IsEnabledNotFunc = 0x80,
+            IsEnabled = 0xC0,
+
+            IrqTriggerLevel1 = 0x00,
+            IrqTriggerLevel2 = 0x40,
+            IrqTriggerLevel3 = 0x80,
+            IrqTriggerLevel4 = 0xC0
+        }
+
+        public Bits StopBits
+        {
+            get
+            {
+                if((lineControl & LineControl.StopBits) == 0)
+                {
+                    return Bits.One;
+                }
+                return ((byte)lineControl & 3u) == 0 ? Bits.OneAndAHalf : Bits.Two;
+            }
+        }
+
+        public Parity ParityBit
+        {
+            get
+            {
+                if((lineControl & LineControl.ParityEnable) == 0)
+                {
+                    return Parity.None;
+                }
+                if((lineControl & LineControl.ForceParity) == 0)
+                {
+                    return (lineControl & LineControl.EvenParity) == 0 ? Parity.Odd : Parity.Even;
+                }
+                return (lineControl & LineControl.EvenParity) == 0 ? Parity.Forced1 : Parity.Forced0;
+            }
+        }
+
+        public uint BaudRate
+        {
+            get
+            {
+                var divisor = (16 * (prescaler + 1) * divider);
+                return divisor == 0 ? 0 : (uint)(SystemClockFrequency / divisor);
+            }
+        }
+
+        private const uint SystemClockFrequency = 0;
+    }
+}
+
